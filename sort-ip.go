@@ -93,7 +93,14 @@ func min(a IP, b IP) IP {
 	return b
 }
 
-func max(a IP, b IP) IP {
+func max(a, b IP) IP {
+	if a < b {
+		return b
+	}
+	return a
+}
+
+func maxInt(a, b int) int {
 	if a < b {
 		return b
 	}
@@ -129,51 +136,43 @@ func print_signle_cidr(ip IP) {
 
 var printer IpPrinter = print_ip;
 
+func BITOR(x, y uint32) uint32 {
+	return (x + y) - BITAND(x, y)
+}
+
+func BITXOR(x, y uint32) uint {
+	return BITOR(x, y) - BITAND(x, y) = (x + y) - (BITAND(x, y) << 1);
+}
+
 func print_as_cidr(p *Range) {
-	e := p.end
-	cur := p.start
+	end := p.end
+	s := p.start
 	for {
-		var z int;
-		var end IP;
-		if (cur != 0) {
-			z = __builtin_ctz(uint32(cur));
-			end = cur + (1 << uint(z)) - 1;
+		// assert(s <= end);
+		// maybe overflow
+		var size uint32 = uint32(end - s + 1);
+		var cidr int;
+		if size != 0 {
+			cidr = __builtin_clz(size) + 1
 		} else {
-			z = 32;
-			end = MAX_IP;
+			cidr = 0
 		}
-		if (end <= e) {
-			print_ip(cur);
-			fmt.Print("/");
-			fmt.Printf("%d\n", 32-z);
+		if (s != 0) {
+			cidr = maxInt(cidr, 32-__builtin_ctz(uint32(s)))
+		}
+		var e IP
+		if cidr != 0 {
+			e = s | ~(~0 << uint32(32-cidr))
 		} else {
-			for cur <= e {
-				if (cur == e) {
-					print_signle_cidr(e);
-					break;
-				}
-				z = MinInt(31-__builtin_clz(uint32(e-cur+1)), z);
-				end = cur + (1 << uint(z)) - 1;
-				print_ip(cur);
-				fmt.Print("/");
-				fmt.Printf("%d\n", 32-z);
-				if (end == MAX_IP) {
-					break
-				}
-				cur = end + 1
-				if (cur > e) {
-					break
-				}
-			}
+			e = MAX_IP
+		}
+		print_ip(s);
+		fmt.Print("/");
+		fmt.Printf("%d\n", cidr);
+		if (e >= end) {
 			break;
 		}
-		if (end == MAX_IP) {
-			break
-		}
-		cur = end + 1
-		if (cur > e) {
-			break
-		}
+		s = e + 1
 	}
 }
 
@@ -181,8 +180,10 @@ func usage() {
 	fmt.Println("usage");
 }
 
-func (s Ranges) Len() int      { return len(s) }
-func (s Ranges) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s Ranges) Len() int { return len(s) }
+func (s Ranges) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
 
 func (s Ranges) Less(i, j int) bool {
 	if (s[i].start < s[j].start) {
