@@ -3,97 +3,31 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"math/bits"
 	"os"
 	"sort"
 	"strings"
 )
 
-type IP uint32
+type IpV4 uint32
 
 type Range struct {
-	start IP;
-	end   IP;
-};
+	start IpV4
+	end   IpV4
+}
 
 type OutputType int
 type Ranges []Range
-type IpPrinter func(IP)
+type IpPrinter func(IpV4)
 
 const (
-	ot_cidr  OutputType = iota
-	ot_range
+	otCidr  OutputType = 0
+	otRange OutputType = 1
 )
 
-const MAX_IP IP = 0xFFFFFFFF
+const MaxIp IpV4 = 0xFFFFFFFF
 
-func __builtin_ctz(u uint32) int {
-	if u == 0 {
-		return 32
-	}
-	var y uint32
-	n := 31
-	y = u << 16;
-	if (y != 0) {
-		n = n - 16;
-		u = y;
-	}
-	y = u << 8;
-	if (y != 0) {
-		n = n - 8;
-		u = y;
-	}
-	y = u << 4;
-	if (y != 0) {
-		n = n - 4;
-		u = y;
-	}
-	y = u << 2;
-	if (y != 0) {
-		n = n - 2;
-		u = y;
-	}
-	return n - int((u<<1)>>31)
-}
-
-func __builtin_clz(i uint32) int {
-	if i == 0 {
-		return 32
-	}
-	n := 1
-	if (i>>16 == 0) {
-		n += 16;
-		i <<= 16;
-	}
-	if (i>>24 == 0) {
-		n += 8;
-		i <<= 8;
-	}
-	if (i>>28 == 0) {
-		n += 4;
-		i <<= 4;
-	}
-	if (i>>30 == 0) {
-		n += 2;
-		i <<= 2;
-	}
-	return n - int(i>>31);
-}
-
-func MinInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b;
-}
-
-func min(a IP, b IP) IP {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func max(a, b IP) IP {
+func max(a, b IpV4) IpV4 {
 	if a < b {
 		return b
 	}
@@ -107,77 +41,69 @@ func maxInt(a, b int) int {
 	return a
 }
 
-func print_ip(t IP) {
-	fmt.Printf("%d.%d.%d.%d", t>>24, t>>16&255, t>>8&255, t&255);
+func printIp(t IpV4) {
+	fmt.Printf("%d.%d.%d.%d", t>>24, t>>16&255, t>>8&255, t&255)
 }
 
-func to_ip(a *[4]int) IP {
-	return IP(a[0]<<24 | a[1]<<16 | a[2]<<8 | a[3])
+func toIp(a *[4]int) IpV4 {
+	return IpV4(a[0]<<24 | a[1]<<16 | a[2]<<8 | a[3])
 }
 
-func print_signle_ip_range(ip IP) {
-	print_ip(ip);
-	fmt.Print("-");
-	print_ip(ip);
-	fmt.Println();
+func printSingleIpAsRange(ip IpV4) {
+	printIp(ip)
+	fmt.Print("-")
+	printIp(ip)
+	fmt.Println()
 }
 
-func print_as_range(p *Range) {
-	print_ip(p.start);
-	fmt.Print("-");
-	print_ip(p.end);
-	fmt.Println();
+func printAsRange(p *Range) {
+	printIp(p.start)
+	fmt.Print("-")
+	printIp(p.end)
+	fmt.Println()
 }
 
-func print_signle_cidr(ip IP) {
-	print_ip(ip);
-	fmt.Println("/32");
+func printSingleIpAsCidr(ip IpV4) {
+	printIp(ip)
+	fmt.Println("/32")
 }
 
-var printer IpPrinter = print_ip;
+var printer IpPrinter = printIp
 
-func BITOR(x, y uint32) uint32 {
-	return (x + y) - BITAND(x, y)
-}
-
-func BITXOR(x, y uint32) uint {
-	return BITOR(x, y) - BITAND(x, y) = (x + y) - (BITAND(x, y) << 1);
-}
-
-func print_as_cidr(p *Range) {
+func printAsCidr(p *Range) {
 	end := p.end
 	s := p.start
 	for {
 		// assert(s <= end);
 		// maybe overflow
-		var size uint32 = uint32(end - s + 1);
-		var cidr int;
+		var size = uint32(end - s + 1)
+		var cidr int
 		if size != 0 {
-			cidr = __builtin_clz(size) + 1
+			cidr = bits.LeadingZeros32(size) + 1
 		} else {
 			cidr = 0
 		}
-		if (s != 0) {
-			cidr = maxInt(cidr, 32-__builtin_ctz(uint32(s)))
+		if s != 0 {
+			cidr = maxInt(cidr, 32-bits.TrailingZeros32(uint32(s)))
 		}
-		var e IP
+		var e IpV4
 		if cidr != 0 {
-			e = s | ~(~0 << uint32(32-cidr))
+			e = s | ^(MaxIp << uint32(32-cidr))
 		} else {
-			e = MAX_IP
+			e = MaxIp
 		}
-		print_ip(s);
-		fmt.Print("/");
-		fmt.Printf("%d\n", cidr);
-		if (e >= end) {
-			break;
+		printIp(s)
+		fmt.Print("/")
+		fmt.Printf("%d\n", cidr)
+		if e >= end {
+			break
 		}
 		s = e + 1
 	}
 }
 
 func usage() {
-	fmt.Println("usage");
+	fmt.Println("usage")
 }
 
 func (s Ranges) Len() int { return len(s) }
@@ -186,17 +112,17 @@ func (s Ranges) Swap(i, j int) {
 }
 
 func (s Ranges) Less(i, j int) bool {
-	if (s[i].start < s[j].start) {
+	if s[i].start < s[j].start {
 		return true
 	}
 	//    if (s.pairs[i].start > s.pairs[j].start) { return false }
 	//    if (s.pairs[i].end < s.pairs[j].end) { return true }
-	return false;
+	return false
 }
 
 func main() {
-	ot := ot_cidr
-	output := print_as_cidr
+	ot := otCidr
+	output := printAsCidr
 	var outputFile string
 	force := false
 
@@ -204,10 +130,10 @@ func main() {
 	for ; i < length; i += 1 {
 		switch arg := os.Args[i]; arg {
 		case "--cidr":
-			ot = ot_cidr
+			ot = otCidr
 			continue
 		case "--range":
-			ot = ot_range;
+			ot = otRange
 			continue
 		case "-o", "--output":
 			i += 1
@@ -240,16 +166,16 @@ func main() {
 		break
 	}
 
-	switch (ot) {
-	case ot_cidr:
-		output = print_as_cidr;
-		if (force) {
-			printer = print_signle_cidr;
+	switch ot {
+	case otCidr:
+		output = printAsCidr
+		if force {
+			printer = printSingleIpAsCidr
 		}
-	case ot_range:
-		output = print_as_range;
-		if (force) {
-			printer = print_signle_ip_range;
+	case otRange:
+		output = printAsRange
+		if force {
+			printer = printSingleIpAsRange
 		}
 	}
 
@@ -279,33 +205,33 @@ func main() {
 	}
 
 	var arr []Range
-	input := bufio.NewScanner(os.Stdin);
+	input := bufio.NewScanner(os.Stdin)
 	for input.Scan() {
 		buf := input.Text()
 		var a [4]int
-		cnt, err := fmt.Sscanf(buf, "%d.%d.%d.%d", &a[0], &a[1], &a[2], &a[3]);
-		if (err != nil) {
+		cnt, err := fmt.Sscanf(buf, "%d.%d.%d.%d", &a[0], &a[1], &a[2], &a[3])
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "ignore line '%s'\n", buf)
-			continue;
+			continue
 		}
-		start := to_ip(&a)
-		end := start;
+		start := toIp(&a)
+		end := start
 		cidr := 32
 
-		cnt, err = fmt.Sscanf(buf, "%d.%d.%d.%d/%d", &a[0], &a[1], &a[2], &a[3], &cidr);
+		cnt, err = fmt.Sscanf(buf, "%d.%d.%d.%d/%d", &a[0], &a[1], &a[2], &a[3], &cidr)
 		if cnt == 5 {
 			if cidr == 0 {
 				start = 0
-				end = MAX_IP
+				end = MaxIp
 			} else {
-				start = IP(uint(start) & (0xFFFFFFFF << uint(32-cidr)))
-				end = IP(uint(start) + (1 << uint(32-cidr)) - 1)
+				start = IpV4(uint(start) & (0xFFFFFFFF << uint(32-cidr)))
+				end = IpV4(uint(start) + (1 << uint(32-cidr)) - 1)
 			}
 		} else {
 			cnt, err = fmt.Sscanf(buf, "%d.%d.%d.%d-%d.%d.%d.%d", &a[0], &a[1], &a[2], &a[3], &a[0], &a[1], &a[2], &a[3])
 			if cnt == 8 {
-				end = to_ip(&a);
-				if (uint(end) < uint(start)) {
+				end = toIp(&a)
+				if uint(end) < uint(start) {
 					start, end = end, start
 				}
 			}
@@ -316,21 +242,21 @@ func main() {
 		})
 	}
 
-	len := len(arr)
-	if (len > 0) {
+	arrLen := len(arr)
+	if arrLen > 0 {
 		sort.Sort(Ranges(arr))
 		j := 0
-		for i := 1; i < len; i += 1 {
-			if (arr[i].start <= arr[j].end+1 || arr[j].end == MAX_IP) {
-				arr[j].end = max(arr[j].end, arr[i].end);
+		for i := 1; i < arrLen; i += 1 {
+			if arr[i].start <= arr[j].end+1 || arr[j].end == MaxIp {
+				arr[j].end = max(arr[j].end, arr[i].end)
 			} else {
 				j += 1
 				arr[j] = arr[i]
 			}
 		}
-		len = j + 1;
+		arrLen = j + 1
 	}
-	for i := 0; i < len; i += 1 {
+	for i := 0; i < arrLen; i += 1 {
 		output(&arr[i])
 	}
 }
