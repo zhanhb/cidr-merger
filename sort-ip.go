@@ -378,15 +378,17 @@ func readAll(input *bufio.Scanner) []Wrapper {
 	var arr []Wrapper
 	for input.Scan() {
 		text := input.Text()
-		maybe, err := parse(text)
-		if err != nil {
-			_, err = fmt.Fprintf(os.Stderr, "%v\n", err)
+		if text != "" {
+			maybe, err := parse(text)
 			if err != nil {
-				panic(err)
+				_, err = fmt.Fprintf(os.Stderr, "%v\n", err)
+				if err != nil {
+					panic(err)
+				}
+				continue
 			}
-			continue
+			arr = append(arr, maybe)
 		}
-		arr = append(arr, maybe)
 	}
 	return arr
 }
@@ -408,19 +410,22 @@ func mainConsole(option *Option) {
 
 	input := bufio.NewScanner(os.Stdin)
 	for ; input.Scan(); {
-		r, err := parse(input.Text())
-		if err != nil {
-			_, err = os.Stderr.WriteString(fmt.Sprintf("%v", err) + "\n")
+		text := input.Text()
+		if text != "" {
+			r, err := parse(text)
 			if err != nil {
-				panic(err)
-			}
-		} else {
-			printer(func(s string) {
-				_, err = os.Stdout.WriteString(s + "\n")
+				_, err = os.Stderr.WriteString(fmt.Sprintf("%v", err) + "\n")
 				if err != nil {
 					panic(err)
 				}
-			}, r)
+			} else {
+				printer(func(s string) {
+					_, err = os.Stdout.WriteString(s + "\n")
+					if err != nil {
+						panic(err)
+					}
+				}, r)
+			}
 		}
 	}
 }
