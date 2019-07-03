@@ -5,3 +5,4 @@ GOMIPS=softfloat
 
 env CGO_ENABLED=0 GOOS=linux GOARCH=mips GOMIPS=$GOMIPS go build -ldflags "$LDFLAGS" -gcflags "$GCFLAGS" -o cidr-merger sort-ip.go
 
+upx --best --ultra-brute cidr-merger
