@@ -1,4 +1,5 @@
 #!/bin/sh
+set -e
 bin="go run sort-ip.go"
 test_dir=target/test/
 mkdir -p ${test_dir}

@@ -3,260 +3,543 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"github.com/pborman/getopt/v2"
 	"math/bits"
+	"net"
 	"os"
 	"sort"
 	"strings"
 )
 
-type IpV4 uint32
-
 type Range struct {
-	start IpV4
-	end   IpV4
+	start net.IP
+	end   net.IP
 }
 
-type OutputType int
-type Ranges []Range
-type IpPrinter func(IpV4)
+type Wrapper interface {
+	familyLength() int
+	String(simple bool) string
+	toIpNets() []net.IPNet
+	toRange() Range
+}
 
-const (
-	otCidr  OutputType = 0
-	otRange OutputType = 1
-)
-
-const MaxIp IpV4 = 0xFFFFFFFF
-
-func max(a, b IpV4) IpV4 {
-	if a < b {
-		return b
+func (r Range) familyLength() int {
+	return len(r.start)
+}
+func (r Range) String(simple bool) string {
+	if simple && r.start.Equal(r.end) {
+		return r.start.String()
 	}
-	return a
+	return r.start.String() + "-" + r.end.String()
 }
-
-func maxInt(a, b int) int {
-	if a < b {
-		return b
+func (r Range) toIpNets() []net.IPNet {
+	end := r.end
+	s := r.start
+	ipBits := len(s) * 8
+	isAllZero := allZero(s)
+	if isAllZero && allFF(end) {
+		return []net.IPNet{
+			{IP: s, Mask: net.CIDRMask(0, ipBits)},
+		}
 	}
-	return a
-}
-
-func printIp(t IpV4) {
-	fmt.Printf("%d.%d.%d.%d", t>>24, t>>16&255, t>>8&255, t&255)
-}
-
-func toIp(a *[4]int) IpV4 {
-	return IpV4(a[0]<<24 | a[1]<<16 | a[2]<<8 | a[3])
-}
-
-func printSingleIpAsRange(ip IpV4) {
-	printIp(ip)
-	fmt.Print("-")
-	printIp(ip)
-	fmt.Println()
-}
-
-func printAsRange(p *Range) {
-	printIp(p.start)
-	fmt.Print("-")
-	printIp(p.end)
-	fmt.Println()
-}
-
-func printSingleIpAsCidr(ip IpV4) {
-	printIp(ip)
-	fmt.Println("/32")
-}
-
-var printer IpPrinter = printIp
-
-func printAsCidr(p *Range) {
-	end := p.end
-	s := p.start
+	var result []net.IPNet
 	for {
-		// assert(s <= end);
-		// maybe overflow
-		var size = uint32(end - s + 1)
-		var cidr int
-		if size != 0 {
-			cidr = bits.LeadingZeros32(size) + 1
-		} else {
-			cidr = 0
+		// assert s <= end;
+		// will never overflow
+		var size = addOne(minus(end, s))
+		cidr := max(leadingZero(size)+1, ipBits-trailingZeros(s))
+		mask := net.CIDRMask(cidr, ipBits)
+		if len(mask)*8 != ipBits {
+			panic("assert failed: " + s.String() + " " + mask.String())
 		}
-		if s != 0 {
-			cidr = maxInt(cidr, 32-bits.TrailingZeros32(uint32(s)))
+		ipNet := net.IPNet{IP: s, Mask: mask}
+		tmp := lastIp(&ipNet)
+		result = append(result, ipNet)
+		if !lessThan(tmp, end) {
+			return result
 		}
-		var e IpV4
-		if cidr != 0 {
-			e = s | ^(MaxIp << uint32(32-cidr))
-		} else {
-			e = MaxIp
-		}
-		printIp(s)
-		fmt.Print("/")
-		fmt.Printf("%d\n", cidr)
-		if e >= end {
-			break
-		}
-		s = e + 1
+		s = addOne(tmp)
+		isAllZero = false
 	}
 }
+func (r Range) toRange() Range {
+	return r
+}
 
-func usage() {
-	fmt.Println("usage")
+type IpWrapper struct {
+	value net.IP
+}
+
+func (r IpWrapper) familyLength() int {
+	return len(r.value)
+}
+func (r IpWrapper) String(bool) string {
+	return r.value.String()
+}
+func (r IpWrapper) toIpNets() []net.IPNet {
+	ipBits := len(r.value) * 8
+	return []net.IPNet{
+		{IP: r.value, Mask: net.CIDRMask(ipBits, ipBits)},
+	}
+}
+func (r IpWrapper) toRange() Range {
+	return Range{start: r.value, end: r.value}
+}
+
+type IpNetWrapper struct {
+	value *net.IPNet
+}
+
+func (r IpNetWrapper) familyLength() int {
+	return len(r.value.IP)
+}
+func (r IpNetWrapper) String(simple bool) string {
+	if ones, bts := r.value.Mask.Size(); simple && ones == bts {
+		return r.value.IP.String()
+	}
+	return r.value.String()
+}
+func (r IpNetWrapper) toIpNets() []net.IPNet {
+	return []net.IPNet{*r.value}
+}
+func (r IpNetWrapper) toRange() Range {
+	ipNet := r.value
+	return Range{start: ipNet.IP, end: lastIp(ipNet)}
+}
+
+type Ranges []Range
+
+func lessThan(a, b net.IP) bool {
+	ipLen := len(a)
+	for i := 0; i < ipLen; i++ {
+		if a[i] < b[i] {
+			return true
+		}
+		if a[i] > b[i] {
+			return false
+		}
+	}
+	return false
+}
+
+func max(a, b int) int {
+	if a < b {
+		return b
+	}
+	return a
+}
+
+func allFF(ip net.IP) bool {
+	for _, c := range ip {
+		if c != 0xff {
+			return false
+		}
+	}
+	return true
+}
+
+func allZero(ip net.IP) bool {
+	for _, c := range ip {
+		if c != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func leadingZero(ip net.IP) int {
+	for index, c := range ip {
+		if c != 0 {
+			return index*8 + bits.LeadingZeros8(c)
+		}
+	}
+	return len(ip) * 8
+}
+
+func trailingZeros(ip net.IP) int {
+	ipLen := len(ip)
+	for i := ipLen - 1; i >= 0; i-- {
+		c := ip[i]
+		if c != 0 {
+			return (ipLen-i-1)*8 + bits.TrailingZeros8(c)
+		}
+	}
+	return ipLen * 8
+}
+
+func lastIp(ipNet *net.IPNet) net.IP {
+	ipLen := len(ipNet.IP)
+	res := make(net.IP, ipLen)
+	mask := ipNet.Mask
+	if len(mask) != ipLen {
+		panic("assert failed: unexpected IPNet " + ipNet.String())
+	}
+	for i := 0; i < ipLen; i++ {
+		res[i] = ipNet.IP[i] | ^mask[i]
+	}
+	return res
+}
+
+func addOne(ip net.IP) net.IP {
+	ipLen := len(ip)
+	to := make(net.IP, ipLen)
+	var add byte = 1
+	for i := ipLen - 1; i >= 0; i-- {
+		res := ip[i] + add
+		to[i] = res
+		if res != 0 {
+			add = 0
+		}
+	}
+	if add != 0 {
+		panic("assert failed: unexpected ip " + ip.String())
+	}
+	return to
+}
+
+func minus(a, b net.IP) net.IP {
+	ipLen := len(a)
+	var result net.IP = make([]byte, ipLen)
+	var borrow byte = 0
+	for i := ipLen - 1; i >= 0; i-- {
+		result[i] = a[i] - b[i] - borrow
+		if result[i] > a[i] {
+			borrow = 1
+		} else {
+			borrow = 0
+		}
+	}
+	if borrow != 0 {
+		panic("assert failed: subtract " + b.String() + " from " + a.String())
+	}
+	return result
 }
 
 func (s Ranges) Len() int { return len(s) }
 func (s Ranges) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
 }
-
 func (s Ranges) Less(i, j int) bool {
-	if s[i].start < s[j].start {
+	si, sj := s[i].start, s[j].start
+	lenOfI := len(si)
+	lenOfJ := len(sj)
+	if lenOfI < lenOfJ {
 		return true
+	} else if lenOfI > lenOfJ {
+		return false
 	}
-	//    if (s.pairs[i].start > s.pairs[j].start) { return false }
-	//    if (s.pairs[i].end < s.pairs[j].end) { return true }
-	return false
+	return lessThan(si, sj)
 }
 
-func main() {
-	ot := otCidr
-	output := printAsCidr
-	var outputFile string
-	force := false
+type Option struct {
+	inputFiles    []string
+	outputFiles   []string
+	outputAsRange bool
+	consoleMode   bool
+	standard      bool
+	originalOrder bool
+	emptyPolicy   string
+}
 
-	i, length := 1, len(os.Args)
-	for ; i < length; i += 1 {
-		switch arg := os.Args[i]; arg {
-		case "--cidr":
-			ot = otCidr
-			continue
-		case "--range":
-			ot = otRange
-			continue
-		case "-o", "--output":
-			i += 1
-			if i < length {
-				outputFile = os.Args[i]
-			} else {
-				usage()
-				os.Exit(1)
-			}
-			continue
-		case "--no-single":
-			force = true
-			continue
-		case "--":
-			i += 1
-			break
-		case "-?", "--help":
-			usage()
-			return
-		default:
-			if strings.HasPrefix(os.Args[i], "-") {
-				fmt.Printf("unknown option '%s'\n", os.Args[i])
-				usage()
-				os.Exit(1)
-			} else {
-				break
-			}
-			continue
-		}
-		break
+func parseOptions() Option {
+	var (
+		dummy      bool
+		outputFile string
+	)
+
+	options := getopt.New()
+	batchModeValue := options.FlagLong(&dummy, "batch", 0, "batch mode (default), read file content into memory, then write to the specified file").Value()
+	consoleMode := options.BoolLong("console", 'c', "console mode, all input output files are ignored, write to stdout immediately")
+	outputAsCidrValue := options.FlagLong(&dummy, "cidr", 0, "print as ip/cidr (default if not console mode)").Value()
+	outputAsRange := options.BoolLong("range", 'r', "print as ip ranges")
+	emptyPolicy := options.EnumLong("empty-policy", 0,
+		[]string{"ignore", "skip", "error"}, "ignore",
+		"indicate how to process empty input file\n  ignore(default): process as if it is not empty\n  skip: don't create output file\n  error: raise an error and exit")
+	outputFileValue := options.FlagLong(&outputFile, "output", 'o', "output values to <file>, if multiple output files specified, the count should be same as input files, and will be processed respectively", "file").Value()
+	errorEmpty := options.FlagLong(&dummy, "error-if-empty", 'e', "same as --empty-policy=error").Value()
+	skipEmpty := options.FlagLong(&dummy, "skip-empty", 'k', "same as --empty-policy=skip").Value()
+	ignoreEmpty := options.FlagLong(&dummy, "ignore-empty", 0, "same as --empty-policy=ignore").Value()
+	simple := options.FlagLong(&dummy, "simple", 0, "output as single ip as possible (default)\n  ie. 192.168.1.2/32 -> 192.168.1.2\n      192.168.1.2-192.168.1.2 -> 192.168.1.2").Value()
+	standard := options.BoolLong("standard", 's', "don't output as single ip")
+	merge := options.FlagLong(&dummy, "merge", 0, "sort and merge input values (default)").Value()
+	originalOrder := options.BoolLong("original-order", 0, "output as the order of input, without merging")
+	help := options.FlagLong(&dummy, "help", '?', "show this help menu").Value()
+	version := options.FlagLong(&dummy, "version", 'v', "show version info").Value()
+	options.SetParameters("[files ...]")
+
+	reverse := make(map[getopt.Value]*bool)
+	reverse[batchModeValue] = consoleMode
+	reverse[outputAsCidrValue] = outputAsRange
+	reverse[simple] = standard
+	reverse[merge] = originalOrder
+
+	policyDelegate := make(map[getopt.Value]string)
+	policyDelegate[errorEmpty] = "error"
+	policyDelegate[skipEmpty] = "skip"
+	policyDelegate[ignoreEmpty] = "ignore"
+
+	var outputFiles []string
+
+	customAction := make(map[getopt.Value]func() bool)
+	customAction[help] = func() bool {
+		options.PrintUsage(os.Stdout)
+		return false
 	}
-
-	switch ot {
-	case otCidr:
-		output = printAsCidr
-		if force {
-			printer = printSingleIpAsCidr
-		}
-	case otRange:
-		output = printAsRange
-		if force {
-			printer = printSingleIpAsRange
-		}
+	customAction[version] = func() bool {
+		println("cidr merger 0.1")
+		return false
 	}
-
-	if i < length {
-		f, err := os.Open(os.Args[i])
+	customAction[outputFileValue] = func() bool {
+		outputFiles = append(outputFiles, outputFile)
+		return true
+	}
+	if err := options.Getopt(os.Args, func(opt getopt.Option) bool {
+		value := opt.Value()
+		if k := reverse[value]; k != nil {
+			*k = !dummy
+			return true
+		} else if k := policyDelegate[value]; k != "" {
+			*emptyPolicy = k
+			return true
+		} else if k := customAction[value]; k != nil {
+			return k()
+		}
+		return opt.Seen()
+	}); err != nil {
+		_, err = fmt.Fprintln(os.Stderr, err)
 		if err != nil {
 			panic(err)
 		}
-		defer f.Close()
-
-		oldStdin := os.Stdin
-		defer func() { os.Stdin = oldStdin }()
-
-		os.Stdin = f
+		options.PrintUsage(os.Stderr)
+		os.Exit(1)
 	}
-	if outputFile != "" {
-		f, err := os.Create(outputFile)
-		if err != nil {
-			panic(err)
+
+	if options.State() == getopt.Terminated {
+		os.Exit(0)
+	}
+
+	var inputFiles []string
+	if args := options.Args(); len(args) == 0 {
+		inputFiles = []string{"-"}
+	} else {
+		inputFiles = args
+	}
+	return Option{
+		inputFiles:    inputFiles,
+		outputFiles:   outputFiles,
+		outputAsRange: *outputAsRange,
+		consoleMode:   *consoleMode,
+		standard:      *standard,
+		originalOrder: *originalOrder,
+		emptyPolicy:   *emptyPolicy,
+	}
+}
+
+func parseIp(str string) net.IP {
+	ip := net.ParseIP(str)
+	if ip != nil {
+		if ipv4 := ip.To4(); ipv4 != nil {
+			return ipv4
 		}
-		defer f.Close()
-
-		oldStdout := os.Stdout
-		defer func() { os.Stdout = oldStdout }()
-
-		os.Stdout = f
 	}
+	return ip
+}
 
-	var arr []Range
-	input := bufio.NewScanner(os.Stdin)
+// maybe IpCidr, Range or Ip is returned
+func parse(line string) (Wrapper, error) {
+	if _, network, err := net.ParseCIDR(line); err == nil {
+		return IpNetWrapper{network}, nil
+	}
+	if ip := parseIp(line); ip != nil {
+		return IpWrapper{ip}, nil
+	}
+	if index := strings.IndexByte(line, '-'); index != -1 {
+		start := parseIp(line[:index])
+		end := parseIp(line[index+1:])
+		if len(start) == len(end) && start != nil {
+			if lessThan(end, start) {
+				return nil, &net.ParseError{Type: "Illegal range", Text: line}
+			}
+			return Range{start: start, end: end}, nil
+		}
+	}
+	return nil, &net.ParseError{Type: "failed to parse specified string", Text: line}
+}
+
+func readAll(input *bufio.Scanner) []Wrapper {
+	var arr []Wrapper
 	for input.Scan() {
-		buf := input.Text()
-		var a [4]int
-		cnt, err := fmt.Sscanf(buf, "%d.%d.%d.%d", &a[0], &a[1], &a[2], &a[3])
+		maybe, err := parse(input.Text())
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "ignore line '%s'\n", buf)
+			_, err = fmt.Fprintf(os.Stderr, "ignore line '%s'\n", err)
+			if err != nil {
+				panic(err)
+			}
 			continue
 		}
-		start := toIp(&a)
-		end := start
-		cidr := 32
+		arr = append(arr, maybe)
+	}
+	return arr
+}
 
-		cnt, err = fmt.Sscanf(buf, "%d.%d.%d.%d/%d", &a[0], &a[1], &a[2], &a[3], &cidr)
-		if cnt == 5 {
-			if cidr == 0 {
-				start = 0
-				end = MaxIp
-			} else {
-				start = IpV4(uint(start) & (0xFFFFFFFF << uint(32-cidr)))
-				end = IpV4(uint(start) + (1 << uint(32-cidr)) - 1)
+func mainConsole(option *Option) {
+	simple, asRange := !option.standard, option.outputAsRange
+	var printer func(writer func(string), r Wrapper)
+	if asRange {
+		printer = func(writer func(string), r Wrapper) {
+			writer(r.toRange().String(simple))
+		}
+	} else {
+		printer = func(writer func(string), r Wrapper) {
+			for _, cidr := range r.toIpNets() {
+				writer(IpNetWrapper{&cidr}.String(simple))
+			}
+		}
+	}
+
+	input := bufio.NewScanner(os.Stdin)
+	for ; input.Scan(); {
+		r, err := parse(input.Text())
+		if err != nil {
+			_, err = os.Stderr.WriteString(fmt.Sprintf("%v", err) + "\n")
+			if err != nil {
+				panic(err)
 			}
 		} else {
-			cnt, err = fmt.Sscanf(buf, "%d.%d.%d.%d-%d.%d.%d.%d", &a[0], &a[1], &a[2], &a[3], &a[0], &a[1], &a[2], &a[3])
-			if cnt == 8 {
-				end = toIp(&a)
-				if uint(end) < uint(start) {
-					start, end = end, start
+			printer(func(s string) {
+				_, err = os.Stdout.WriteString(s + "\n")
+				if err != nil {
+					panic(err)
+				}
+			}, r)
+		}
+	}
+}
+
+func process(option *Option, outputFile string, inputFiles ...string) {
+	var result []Wrapper
+	for _, inputFile := range inputFiles {
+		var input *bufio.Scanner
+		if inputFile == "-" {
+			input = bufio.NewScanner(os.Stdin)
+		} else {
+			in, err := os.Open(inputFile)
+			if err != nil {
+				panic(err)
+			}
+			//noinspection GoUnhandledErrorResult,GoDeferInLoop
+			defer in.Close()
+			input = bufio.NewScanner(in)
+		}
+		result = append(result, readAll(input)...)
+	}
+	if len(result) == 0 {
+		switch option.emptyPolicy {
+		case "error":
+			panic("no data")
+		case "skip":
+			return
+		}
+	}
+	arrLen := len(result)
+	if option.originalOrder || arrLen < 2 {
+		// noop
+	} else {
+		var ranges []Range
+		for _, e := range result {
+			ranges = append(ranges, e.toRange())
+		}
+		sort.Sort(Ranges(ranges))
+
+		var res []Wrapper
+		now := ranges[0]
+		familyLength := now.familyLength()
+		start, end := now.start, now.end
+		for i := 1; i < arrLen; i++ {
+			now := ranges[i]
+			if fl := now.familyLength(); fl != familyLength {
+				res = append(res, Range{start, end})
+				familyLength = fl
+				start, end = now.start, now.end
+				continue
+			}
+			if allFF(end) || !lessThan(addOne(end), now.start) {
+				if lessThan(end, now.end) {
+					end = now.end
+				}
+			} else {
+				res = append(res, Range{start, end})
+				start, end = now.start, now.end
+			}
+		}
+		res = append(res, Range{start, end})
+		result = res
+	}
+	var target *os.File
+	if outputFile == "-" {
+		target = os.Stdout
+	} else {
+		file, err := os.Create(outputFile)
+		if err != nil {
+			panic(err)
+		}
+		//noinspection GoUnhandledErrorResult,GoDeferInLoop
+		defer file.Close()
+		target = file
+	}
+	writer := bufio.NewWriter(target)
+	simple := !option.standard
+	for _, r := range result {
+		if option.outputAsRange {
+			_, err := writer.WriteString(r.toRange().String(simple))
+			if err != nil {
+				panic(err)
+			}
+			_, err = writer.WriteRune('\n')
+			if err != nil {
+				panic(err)
+			}
+		} else {
+			for _, ipNet := range r.toIpNets() {
+				_, err := writer.WriteString(IpNetWrapper{&ipNet}.String(simple) + "\n")
+				if err != nil {
+					panic(err)
 				}
 			}
 		}
-		arr = append(arr, Range{
-			start: start,
-			end:   end,
-		})
 	}
+	err := writer.Flush()
+	if err != nil {
+		panic(err)
+	}
+}
 
-	arrLen := len(arr)
-	if arrLen > 0 {
-		sort.Sort(Ranges(arr))
-		j := 0
-		for i := 1; i < arrLen; i += 1 {
-			if arr[i].start <= arr[j].end+1 || arr[j].end == MaxIp {
-				arr[j].end = max(arr[j].end, arr[i].end)
-			} else {
-				j += 1
-				arr[j] = arr[i]
-			}
+func mainNormal(option *Option) {
+	outputSize := len(option.outputFiles)
+	if outputSize == 0 || outputSize == 1 {
+		var outputFile string
+		if outputSize == 1 {
+			outputFile = option.outputFiles[0]
+		} else {
+			outputFile = "-"
 		}
-		arrLen = j + 1
+		process(option, outputFile, option.inputFiles...)
+	} else if len(option.inputFiles) == outputSize {
+		for i := 0; i < outputSize; i++ {
+			process(option, option.outputFiles[i], option.inputFiles[i])
+		}
+	} else {
+		panic("Input files' size don't match output files' size")
 	}
-	for i := 0; i < arrLen; i += 1 {
-		output(&arr[i])
+}
+
+func main() {
+	getopt.HelpColumn = 28
+	option := parseOptions()
+
+	if option.consoleMode {
+		mainConsole(&option)
+	} else {
+		mainNormal(&option)
 	}
 }
