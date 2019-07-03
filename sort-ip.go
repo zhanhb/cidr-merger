@@ -390,7 +390,7 @@ func parse(line string) (Wrapper, error) {
 	return nil, &net.ParseError{Type: "ip/cidr/range", Text: line}
 }
 
-func readAll(input *bufio.Scanner) []Wrapper {
+func read(input *bufio.Scanner) []Wrapper {
 	var arr []Wrapper
 	for input.Scan() {
 		text := input.Text()
@@ -407,6 +407,26 @@ func readAll(input *bufio.Scanner) []Wrapper {
 		}
 	}
 	return arr
+}
+
+func readAll(inputFiles ...string) []Wrapper {
+	var result []Wrapper
+	for _, inputFile := range inputFiles {
+		var input *bufio.Scanner
+		if inputFile == "-" {
+			input = bufio.NewScanner(os.Stdin)
+		} else {
+			in, err := os.Open(inputFile)
+			if err != nil {
+				panic(err)
+			}
+			//noinspection GoUnhandledErrorResult,GoDeferInLoop
+			defer in.Close()
+			input = bufio.NewScanner(in)
+		}
+		result = append(result, read(input)...)
+	}
+	return result
 }
 
 func mainConsole(option *Option) {
@@ -465,22 +485,7 @@ func mainConsole(option *Option) {
 }
 
 func process(option *Option, outputFile string, inputFiles ...string) {
-	var result []Wrapper
-	for _, inputFile := range inputFiles {
-		var input *bufio.Scanner
-		if inputFile == "-" {
-			input = bufio.NewScanner(os.Stdin)
-		} else {
-			in, err := os.Open(inputFile)
-			if err != nil {
-				panic(err)
-			}
-			//noinspection GoUnhandledErrorResult,GoDeferInLoop
-			defer in.Close()
-			input = bufio.NewScanner(in)
-		}
-		result = append(result, readAll(input)...)
-	}
+	result := readAll(inputFiles...)
 	if len(result) == 0 {
 		switch option.emptyPolicy {
 		case "error":
