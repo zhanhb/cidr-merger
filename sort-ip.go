@@ -413,6 +413,7 @@ func readAll(inputFiles ...string) []Wrapper {
 			defer in.Close()
 			input = bufio.NewScanner(in)
 		}
+		input.Split(bufio.ScanWords)
 		result = append(result, read(input)...)
 	}
 	return result
@@ -452,6 +453,7 @@ func mainConsole(option *Option) {
 	}
 
 	input := bufio.NewScanner(os.Stdin)
+	input.Split(bufio.ScanWords)
 	for ; input.Scan(); {
 		text := input.Text()
 		if text != "" {
