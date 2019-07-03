@@ -12,27 +12,27 @@ import (
 	"strings"
 )
 
+type Wrapper interface {
+	String(simple bool) string
+	ToIpNets() []net.IPNet
+	ToRange() *Range
+}
+
 type Range struct {
 	start net.IP
 	end   net.IP
 }
 
-type Wrapper interface {
-	String(simple bool) string
-	ToIpNets() []net.IPNet
-	ToRange() Range
-}
-
-func (r Range) familyLength() int {
+func (r *Range) familyLength() int {
 	return len(r.start)
 }
-func (r Range) String(simple bool) string {
+func (r *Range) String(simple bool) string {
 	if simple && bytes.Equal(r.start, r.end) {
 		return r.start.String()
 	}
 	return r.start.String() + "-" + r.end.String()
 }
-func (r Range) ToIpNets() []net.IPNet {
+func (r *Range) ToIpNets() []net.IPNet {
 	end := r.end
 	s := r.start
 	ipBits := len(s) * 8
@@ -57,7 +57,7 @@ func (r Range) ToIpNets() []net.IPNet {
 		isAllZero = false
 	}
 }
-func (r Range) ToRange() Range {
+func (r *Range) ToRange() *Range {
 	return r
 }
 
@@ -74,8 +74,8 @@ func (r IpWrapper) ToIpNets() []net.IPNet {
 		{IP: r.value, Mask: net.CIDRMask(ipBits, ipBits)},
 	}
 }
-func (r IpWrapper) ToRange() Range {
-	return Range{start: r.value, end: r.value}
+func (r IpWrapper) ToRange() *Range {
+	return &Range{start: r.value, end: r.value}
 }
 
 type IpNetWrapper struct {
@@ -91,12 +91,10 @@ func (r IpNetWrapper) String(simple bool) string {
 func (r IpNetWrapper) ToIpNets() []net.IPNet {
 	return []net.IPNet{*r.value}
 }
-func (r IpNetWrapper) ToRange() Range {
+func (r IpNetWrapper) ToRange() *Range {
 	ipNet := r.value
-	return Range{start: ipNet.IP, end: lastIp(ipNet)}
+	return &Range{start: ipNet.IP, end: lastIp(ipNet)}
 }
-
-type Ranges []Range
 
 func lessThan(a, b net.IP) bool {
 	if lenA, lenB := len(a), len(b); lenA != lenB {
@@ -150,14 +148,14 @@ func trailingZeros(ip net.IP) int {
 }
 
 func lastIp(ipNet *net.IPNet) net.IP {
-	ipLen := len(ipNet.IP)
+	ip, mask := ipNet.IP, ipNet.Mask
+	ipLen := len(ip)
 	res := make(net.IP, ipLen)
-	mask := ipNet.Mask
 	if len(mask) != ipLen {
 		panic("assert failed: unexpected IPNet " + ipNet.String())
 	}
 	for i := 0; i < ipLen; i++ {
-		res[i] = ipNet.IP[i] | ^mask[i]
+		res[i] = ip[i] | ^mask[i]
 	}
 	return res
 }
@@ -181,7 +179,7 @@ func addOne(ip net.IP) net.IP {
 
 func minus(a, b net.IP) net.IP {
 	ipLen := len(a)
-	var result net.IP = make([]byte, ipLen)
+	result := make(net.IP, ipLen)
 	var borrow byte = 0
 	for i := ipLen - 1; i >= 0; i-- {
 		result[i] = a[i] - b[i] - borrow
@@ -197,18 +195,14 @@ func minus(a, b net.IP) net.IP {
 	return result
 }
 
+type Ranges []*Range
+
 func (s Ranges) Len() int { return len(s) }
 func (s Ranges) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
 }
 func (s Ranges) Less(i, j int) bool {
-	si, sj := s[i].start, s[j].start
-	if lenOfI, lenOfJ := len(si), len(sj); lenOfI < lenOfJ {
-		return true
-	} else if lenOfI > lenOfJ {
-		return false
-	}
-	return lessThan(si, sj)
+	return lessThan(s[i].start, s[j].start)
 }
 
 type OutputType int
@@ -255,7 +249,6 @@ func parseOptions() Option {
 	originalOrder := options.BoolLong("original-order", 0, "output as the order of input, without merging")
 	help := options.FlagLong(&dummy, "help", 'h', "show this help menu").Value()
 	version := options.FlagLong(&dummy, "version", 'v', "show version info").Value()
-	options.SetParameters("[files ...]")
 
 	reverse := map[getopt.Value]*bool{
 		batchModeValue: consoleMode,
@@ -278,16 +271,12 @@ func parseOptions() Option {
 
 	customAction := map[getopt.Value]func() bool{
 		help: func() bool {
-			parts := make([]string, 3, 4)
-			parts[0] = "Usage:"
-			parts[1] = options.Program()
-			parts[2] = "[Options]"
-			if params := options.Parameters(); params != "" {
-				parts = append(parts, params)
-			}
 			w := os.Stdout
-			_, err := fmt.Fprintln(w, strings.Join(parts, " "))
-			if err != nil {
+			if _, err := fmt.Fprintln(w, strings.Join([]string{
+				"Usage:",
+				options.Program(),
+				"[Options] [files ...]",
+			}, " ")); err != nil {
 				panic(err)
 			}
 			options.PrintOptions(w)
@@ -316,8 +305,7 @@ func parseOptions() Option {
 		}
 		return opt.Seen()
 	}); err != nil {
-		_, err = fmt.Fprintln(os.Stderr, err)
-		if err != nil {
+		if _, err = fmt.Fprintln(os.Stderr, err); err != nil {
 			panic(err)
 		}
 		options.PrintUsage(os.Stderr)
@@ -370,7 +358,7 @@ func parse(line string) (Wrapper, error) {
 			if lessThan(end, start) {
 				return nil, &net.ParseError{Type: "range", Text: line}
 			}
-			return Range{start: start, end: end}, nil
+			return &Range{start: start, end: end}, nil
 		}
 	}
 	return nil, &net.ParseError{Type: "ip/cidr/range", Text: line}
@@ -379,11 +367,10 @@ func parse(line string) (Wrapper, error) {
 func read(input *bufio.Scanner) []Wrapper {
 	var arr []Wrapper
 	for input.Scan() {
-		text := input.Text()
-		if text != "" {
+		if text := input.Text(); text != "" {
 			maybe, err := parse(text)
 			if err != nil {
-				_, err = fmt.Fprintf(os.Stderr, "%v\n", err)
+				_, err = fmt.Fprintln(os.Stderr, err)
 				if err != nil {
 					panic(err)
 				}
@@ -444,7 +431,7 @@ func mainConsole(option *Option) {
 				doAsCidr(writer, r, false)
 			case IpNetWrapper:
 				writer(r.ToRange().String(simple))
-			case Range:
+			case *Range:
 				doAsCidr(writer, r, simple)
 			default:
 				panic("should not reached")
@@ -454,19 +441,15 @@ func mainConsole(option *Option) {
 
 	input := bufio.NewScanner(os.Stdin)
 	input.Split(bufio.ScanWords)
-	for ; input.Scan(); {
-		text := input.Text()
-		if text != "" {
-			r, err := parse(text)
-			if err != nil {
-				_, err = os.Stderr.WriteString(fmt.Sprintf("%v", err) + "\n")
-				if err != nil {
+	for input.Scan() {
+		if text := input.Text(); text != "" {
+			if r, err := parse(text); err != nil {
+				if _, err = fmt.Fprintln(os.Stderr, err); err != nil {
 					panic(err)
 				}
 			} else {
 				printer(func(s string) {
-					_, err = os.Stdout.WriteString(s + "\n")
-					if err != nil {
+					if _, err = fmt.Fprintln(os.Stdout, s); err != nil {
 						panic(err)
 					}
 				}, r)
@@ -490,7 +473,7 @@ func process(option *Option, outputFile string, inputFiles ...string) {
 	if arrLen := len(result); option.originalOrder || arrLen < 2 {
 		// noop
 	} else {
-		var ranges []Range
+		var ranges []*Range
 		for _, e := range result {
 			ranges = append(ranges, e.ToRange())
 		}
@@ -503,7 +486,7 @@ func process(option *Option, outputFile string, inputFiles ...string) {
 		for i := 1; i < arrLen; i++ {
 			now := ranges[i]
 			if fl := now.familyLength(); fl != familyLength {
-				res = append(res, Range{start, end})
+				res = append(res, &Range{start, end})
 				familyLength = fl
 				start, end = now.start, now.end
 				continue
@@ -513,11 +496,11 @@ func process(option *Option, outputFile string, inputFiles ...string) {
 					end = now.end
 				}
 			} else {
-				res = append(res, Range{start, end})
+				res = append(res, &Range{start, end})
 				start, end = now.start, now.end
 			}
 		}
-		res = append(res, Range{start, end})
+		res = append(res, &Range{start, end})
 		result = res
 	}
 	var target *os.File
@@ -528,7 +511,7 @@ func process(option *Option, outputFile string, inputFiles ...string) {
 		if err != nil {
 			panic(err)
 		}
-		//noinspection GoUnhandledErrorResult,GoDeferInLoop
+		//noinspection GoUnhandledErrorResult
 		defer file.Close()
 		target = file
 	}
@@ -536,27 +519,26 @@ func process(option *Option, outputFile string, inputFiles ...string) {
 	simple := !option.standard
 	for _, r := range result {
 		if option.outputType == OutputTypeRange {
-			_, err := writer.WriteString(r.ToRange().String(simple) + "\n")
+			_, err := fmt.Fprintln(writer, r.ToRange().String(simple))
 			if err != nil {
 				panic(err)
 			}
 		} else {
 			for _, ipNet := range r.ToIpNets() {
-				_, err := writer.WriteString(IpNetWrapper{&ipNet}.String(simple) + "\n")
+				_, err := fmt.Fprintln(writer, IpNetWrapper{&ipNet}.String(simple))
 				if err != nil {
 					panic(err)
 				}
 			}
 		}
 	}
-	err := writer.Flush()
-	if err != nil {
+	if err := writer.Flush(); err != nil {
 		panic(err)
 	}
 }
 
 func mainNormal(option *Option) {
-	if outputSize := len(option.outputFiles); outputSize == 0 || outputSize == 1 {
+	if outputSize := len(option.outputFiles); outputSize <= 1 {
 		var outputFile string
 		if outputSize == 1 {
 			outputFile = option.outputFiles[0]
@@ -577,15 +559,13 @@ func main() {
 	defer func() {
 		if err := recover(); err != nil {
 			//noinspection GoUnhandledErrorResult
-			fmt.Fprintf(os.Stderr, "%v\n", err)
+			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
 	}()
 
 	getopt.HelpColumn = 28
-	option := parseOptions()
-
-	if option.consoleMode {
+	if option := parseOptions(); option.consoleMode {
 		mainConsole(&option)
 	} else {
 		mainNormal(&option)
