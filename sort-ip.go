@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/pborman/getopt/v2"
+	"io"
 	"math/bits"
 	"net"
 	"os"
@@ -282,17 +283,28 @@ func parseOptions() Option {
 
 	var outputFiles []string
 
-	customAction := map[getopt.Value]func() bool{
-		help: func() bool {
-			w := os.Stdout
-			if _, err := fmt.Fprintln(w, strings.Join([]string{
+	printUsage := func(file io.Writer) {
+		var results = []interface{}{
+			strings.Join([]string{
 				"Usage:",
 				options.Program(),
-				"[Options] [files ...]",
-			}, " ")); err != nil {
+				"[OPTION]... [FILE]...",
+			}, " "),
+			"Write sorted result to standard output.",
+			"",
+			"Options:",
+		}
+		for _, r := range results {
+			if _, err := fmt.Fprintln(file, r); err != nil {
 				panic(err)
 			}
-			options.PrintOptions(w)
+		}
+		options.PrintOptions(file)
+	}
+
+	customAction := map[getopt.Value]func() bool{
+		help: func() bool {
+			printUsage(os.Stdout)
 			return false
 		}, version: func() bool {
 			println("cidr merger 0.1")
@@ -321,7 +333,7 @@ func parseOptions() Option {
 		if _, err = fmt.Fprintln(os.Stderr, err); err != nil {
 			panic(err)
 		}
-		options.PrintUsage(os.Stderr)
+		printUsage(os.Stderr)
 		os.Exit(1)
 	}
 
