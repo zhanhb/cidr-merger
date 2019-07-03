@@ -263,7 +263,7 @@ func parseOptions() Option {
 	standard := options.BoolLong("standard", 's', "don't output as single ip")
 	merge := options.FlagLong(&dummy, "merge", 0, "sort and merge input values (default)").Value()
 	originalOrder := options.BoolLong("original-order", 0, "output as the order of input, without merging")
-	help := options.FlagLong(&dummy, "help", '?', "show this help menu").Value()
+	help := options.FlagLong(&dummy, "help", 'h', "show this help menu").Value()
 	version := options.FlagLong(&dummy, "version", 'v', "show version info").Value()
 	options.SetParameters("[files ...]")
 
@@ -282,7 +282,19 @@ func parseOptions() Option {
 
 	customAction := make(map[getopt.Value]func() bool)
 	customAction[help] = func() bool {
-		options.PrintUsage(os.Stdout)
+		parts := make([]string, 3, 4)
+		parts[0] = "Usage:"
+		parts[1] = options.Program()
+		parts[2] = "[Options]"
+		if params := options.Parameters(); params != "" {
+			parts = append(parts, params)
+		}
+		w := os.Stdout
+		_, err := fmt.Fprintln(w, strings.Join(parts, " "))
+		if err != nil {
+			panic(err)
+		}
+		options.PrintOptions(w)
 		return false
 	}
 	customAction[version] = func() bool {
