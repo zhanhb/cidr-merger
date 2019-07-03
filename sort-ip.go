@@ -99,8 +99,7 @@ func (r IpNetWrapper) ToRange() Range {
 type Ranges []Range
 
 func lessThan(a, b net.IP) bool {
-	lenA, lenB := len(a), len(b)
-	if lenA != lenB {
+	if lenA, lenB := len(a), len(b); lenA != lenB {
 		return lenA < lenB
 	}
 	return bytes.Compare(a, b) < 0
@@ -143,8 +142,7 @@ func leadingZero(ip net.IP) int {
 func trailingZeros(ip net.IP) int {
 	ipLen := len(ip)
 	for i := ipLen - 1; i >= 0; i-- {
-		c := ip[i]
-		if c != 0 {
+		if c := ip[i]; c != 0 {
 			return (ipLen-i-1)*8 + bits.TrailingZeros8(c)
 		}
 	}
@@ -205,9 +203,7 @@ func (s Ranges) Swap(i, j int) {
 }
 func (s Ranges) Less(i, j int) bool {
 	si, sj := s[i].start, s[j].start
-	lenOfI := len(si)
-	lenOfJ := len(sj)
-	if lenOfI < lenOfJ {
+	if lenOfI, lenOfJ := len(si), len(sj); lenOfI < lenOfJ {
 		return true
 	} else if lenOfI > lenOfJ {
 		return false
@@ -261,46 +257,48 @@ func parseOptions() Option {
 	version := options.FlagLong(&dummy, "version", 'v', "show version info").Value()
 	options.SetParameters("[files ...]")
 
-	reverse := make(map[getopt.Value]*bool)
-	reverse[batchModeValue] = consoleMode
-	reverse[simple] = standard
-	reverse[merge] = originalOrder
+	reverse := map[getopt.Value]*bool{
+		batchModeValue: consoleMode,
+		simple:         standard,
+		merge:          originalOrder,
+	}
 
-	policyDelegate := make(map[getopt.Value]string)
-	policyDelegate[errorEmpty] = "error"
-	policyDelegate[skipEmpty] = "skip"
-	policyDelegate[ignoreEmpty] = "ignore"
+	policyDelegate := map[getopt.Value]string{
+		errorEmpty:  "error",
+		skipEmpty:   "skip",
+		ignoreEmpty: "ignore",
+	}
 
-	outputMap := make(map[getopt.Value]OutputType)
-	outputMap[outputAsCidr] = OutputTypeCidr
-	outputMap[outputAsRange] = OutputTypeRange
+	outputMap := map[getopt.Value]OutputType{
+		outputAsCidr:  OutputTypeCidr,
+		outputAsRange: OutputTypeRange,
+	}
 
 	var outputFiles []string
 
-	customAction := make(map[getopt.Value]func() bool)
-	customAction[help] = func() bool {
-		parts := make([]string, 3, 4)
-		parts[0] = "Usage:"
-		parts[1] = options.Program()
-		parts[2] = "[Options]"
-		if params := options.Parameters(); params != "" {
-			parts = append(parts, params)
-		}
-		w := os.Stdout
-		_, err := fmt.Fprintln(w, strings.Join(parts, " "))
-		if err != nil {
-			panic(err)
-		}
-		options.PrintOptions(w)
-		return false
-	}
-	customAction[version] = func() bool {
-		println("cidr merger 0.1")
-		return false
-	}
-	customAction[outputFileValue] = func() bool {
-		outputFiles = append(outputFiles, outputFile)
-		return true
+	customAction := map[getopt.Value]func() bool{
+		help: func() bool {
+			parts := make([]string, 3, 4)
+			parts[0] = "Usage:"
+			parts[1] = options.Program()
+			parts[2] = "[Options]"
+			if params := options.Parameters(); params != "" {
+				parts = append(parts, params)
+			}
+			w := os.Stdout
+			_, err := fmt.Fprintln(w, strings.Join(parts, " "))
+			if err != nil {
+				panic(err)
+			}
+			options.PrintOptions(w)
+			return false
+		}, version: func() bool {
+			println("cidr merger 0.1")
+			return false
+		}, outputFileValue: func() bool {
+			outputFiles = append(outputFiles, outputFile)
+			return true
+		},
 	}
 	if err := options.Getopt(os.Args, func(opt getopt.Option) bool {
 		value := opt.Value()
@@ -335,9 +333,6 @@ func parseOptions() Option {
 		inputFiles = []string{"-"}
 	} else {
 		inputFiles = args
-	}
-	if *emptyPolicy == "" {
-		*emptyPolicy = "ignore"
 	}
 	return Option{
 		inputFiles:    inputFiles,
@@ -486,10 +481,11 @@ func process(option *Option, outputFile string, inputFiles ...string) {
 			panic("no data")
 		case "skip":
 			return
+		default:
+			// empty string if not specified, or "ignore"
 		}
 	}
-	arrLen := len(result)
-	if option.originalOrder || arrLen < 2 {
+	if arrLen := len(result); option.originalOrder || arrLen < 2 {
 		// noop
 	} else {
 		var ranges []Range
@@ -558,8 +554,7 @@ func process(option *Option, outputFile string, inputFiles ...string) {
 }
 
 func mainNormal(option *Option) {
-	outputSize := len(option.outputFiles)
-	if outputSize == 0 || outputSize == 1 {
+	if outputSize := len(option.outputFiles); outputSize == 0 || outputSize == 1 {
 		var outputFile string
 		if outputSize == 1 {
 			outputFile = option.outputFiles[0]
