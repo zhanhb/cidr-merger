@@ -18,8 +18,8 @@ type Range struct {
 
 type Wrapper interface {
 	String(simple bool) string
-	toIpNets() []net.IPNet
-	toRange() Range
+	ToIpNets() []net.IPNet
+	ToRange() Range
 }
 
 func (r Range) familyLength() int {
@@ -31,7 +31,7 @@ func (r Range) String(simple bool) string {
 	}
 	return r.start.String() + "-" + r.end.String()
 }
-func (r Range) toIpNets() []net.IPNet {
+func (r Range) ToIpNets() []net.IPNet {
 	end := r.end
 	s := r.start
 	ipBits := len(s) * 8
@@ -61,7 +61,7 @@ func (r Range) toIpNets() []net.IPNet {
 		isAllZero = false
 	}
 }
-func (r Range) toRange() Range {
+func (r Range) ToRange() Range {
 	return r
 }
 
@@ -72,13 +72,13 @@ type IpWrapper struct {
 func (r IpWrapper) String(bool) string {
 	return r.value.String()
 }
-func (r IpWrapper) toIpNets() []net.IPNet {
+func (r IpWrapper) ToIpNets() []net.IPNet {
 	ipBits := len(r.value) * 8
 	return []net.IPNet{
 		{IP: r.value, Mask: net.CIDRMask(ipBits, ipBits)},
 	}
 }
-func (r IpWrapper) toRange() Range {
+func (r IpWrapper) ToRange() Range {
 	return Range{start: r.value, end: r.value}
 }
 
@@ -92,10 +92,10 @@ func (r IpNetWrapper) String(simple bool) string {
 	}
 	return r.value.String()
 }
-func (r IpNetWrapper) toIpNets() []net.IPNet {
+func (r IpNetWrapper) ToIpNets() []net.IPNet {
 	return []net.IPNet{*r.value}
 }
-func (r IpNetWrapper) toRange() Range {
+func (r IpNetWrapper) ToRange() Range {
 	ipNet := r.value
 	return Range{start: ipNet.IP, end: lastIp(ipNet)}
 }
@@ -431,7 +431,7 @@ func readAll(inputFiles ...string) []Wrapper {
 
 func mainConsole(option *Option) {
 	doAsCidr := func(writer func(string), r Wrapper, simple bool) {
-		for _, cidr := range r.toIpNets() {
+		for _, cidr := range r.ToIpNets() {
 			writer(IpNetWrapper{&cidr}.String(simple))
 		}
 	}
@@ -441,7 +441,7 @@ func mainConsole(option *Option) {
 	switch outputType {
 	case OutputTypeRange:
 		printer = func(writer func(string), r Wrapper) {
-			writer(r.toRange().String(simple))
+			writer(r.ToRange().String(simple))
 		}
 	case OutputTypeCidr:
 		printer = func(writer func(string), r Wrapper) {
@@ -453,7 +453,7 @@ func mainConsole(option *Option) {
 			case IpWrapper:
 				doAsCidr(writer, r, false)
 			case IpNetWrapper:
-				writer(r.toRange().String(simple))
+				writer(r.ToRange().String(simple))
 			case Range:
 				doAsCidr(writer, r, simple)
 			default:
@@ -500,7 +500,7 @@ func process(option *Option, outputFile string, inputFiles ...string) {
 	} else {
 		var ranges []Range
 		for _, e := range result {
-			ranges = append(ranges, e.toRange())
+			ranges = append(ranges, e.ToRange())
 		}
 		sort.Sort(Ranges(ranges))
 
@@ -544,12 +544,12 @@ func process(option *Option, outputFile string, inputFiles ...string) {
 	simple := !option.standard
 	for _, r := range result {
 		if option.outputType == OutputTypeRange {
-			_, err := writer.WriteString(r.toRange().String(simple) + "\n")
+			_, err := writer.WriteString(r.ToRange().String(simple) + "\n")
 			if err != nil {
 				panic(err)
 			}
 		} else {
-			for _, ipNet := range r.toIpNets() {
+			for _, ipNet := range r.ToIpNets() {
 				_, err := writer.WriteString(IpNetWrapper{&ipNet}.String(simple) + "\n")
 				if err != nil {
 					panic(err)
