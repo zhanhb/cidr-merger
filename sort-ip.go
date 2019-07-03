@@ -224,27 +224,37 @@ func (s Ranges) Less(i, j int) bool {
 	return lessThan(si, sj)
 }
 
+type OutputType int
+
 type Option struct {
 	inputFiles    []string
 	outputFiles   []string
-	outputAsRange bool
+	outputType    OutputType
 	consoleMode   bool
 	standard      bool
 	originalOrder bool
 	emptyPolicy   string
 }
 
+const (
+	OutputTypeNotSpecified OutputType = iota
+	OutputTypeDefault
+	OutputTypeCidr
+	OutputTypeRange
+)
+
 func parseOptions() Option {
 	var (
 		dummy      bool
 		outputFile string
+		outputType = OutputTypeDefault
 	)
 
 	options := getopt.New()
 	batchModeValue := options.FlagLong(&dummy, "batch", 0, "batch mode (default), read file content into memory, then write to the specified file").Value()
 	consoleMode := options.BoolLong("console", 'c', "console mode, all input output files are ignored, write to stdout immediately")
-	outputAsCidrValue := options.FlagLong(&dummy, "cidr", 0, "print as ip/cidr (default if not console mode)").Value()
-	outputAsRange := options.BoolLong("range", 'r', "print as ip ranges")
+	outputAsCidr := options.FlagLong(&dummy, "cidr", 0, "print as ip/cidr (default if not console mode)").Value()
+	outputAsRange := options.FlagLong(&dummy, "range", 'r', "print as ip ranges").Value()
 	emptyPolicy := options.EnumLong("empty-policy", 0,
 		[]string{"ignore", "skip", "error"}, "",
 		"indicate how to process empty input file\n  ignore(default): process as if it is not empty\n  skip: don't create output file\n  error: raise an error and exit")
@@ -262,7 +272,6 @@ func parseOptions() Option {
 
 	reverse := make(map[getopt.Value]*bool)
 	reverse[batchModeValue] = consoleMode
-	reverse[outputAsCidrValue] = outputAsRange
 	reverse[simple] = standard
 	reverse[merge] = originalOrder
 
@@ -270,6 +279,10 @@ func parseOptions() Option {
 	policyDelegate[errorEmpty] = "error"
 	policyDelegate[skipEmpty] = "skip"
 	policyDelegate[ignoreEmpty] = "ignore"
+
+	outputMap := make(map[getopt.Value]OutputType)
+	outputMap[outputAsCidr] = OutputTypeCidr
+	outputMap[outputAsRange] = OutputTypeRange
 
 	var outputFiles []string
 
@@ -306,6 +319,9 @@ func parseOptions() Option {
 		} else if k := policyDelegate[value]; k != "" {
 			*emptyPolicy = k
 			return true
+		} else if k := outputMap[value]; k != OutputTypeNotSpecified {
+			outputType = k
+			return true
 		} else if k := customAction[value]; k != nil {
 			return k()
 		}
@@ -335,7 +351,7 @@ func parseOptions() Option {
 	return Option{
 		inputFiles:    inputFiles,
 		outputFiles:   outputFiles,
-		outputAsRange: *outputAsRange,
+		outputType:    outputType,
 		consoleMode:   *consoleMode,
 		standard:      *standard,
 		originalOrder: *originalOrder,
@@ -394,16 +410,34 @@ func readAll(input *bufio.Scanner) []Wrapper {
 }
 
 func mainConsole(option *Option) {
-	simple, asRange := !option.standard, option.outputAsRange
+	doAsCidr := func(writer func(string), r Wrapper, simple bool) {
+		for _, cidr := range r.toIpNets() {
+			writer(IpNetWrapper{&cidr}.String(simple))
+		}
+	}
+
+	simple, outputType := !option.standard, option.outputType
 	var printer func(writer func(string), r Wrapper)
-	if asRange {
+	switch outputType {
+	case OutputTypeRange:
 		printer = func(writer func(string), r Wrapper) {
 			writer(r.toRange().String(simple))
 		}
-	} else {
+	case OutputTypeCidr:
 		printer = func(writer func(string), r Wrapper) {
-			for _, cidr := range r.toIpNets() {
-				writer(IpNetWrapper{&cidr}.String(simple))
+			doAsCidr(writer, r, simple)
+		}
+	default:
+		printer = func(writer func(string), r Wrapper) {
+			switch r.(type) {
+			case IpWrapper:
+				doAsCidr(writer, r, false)
+			case IpNetWrapper:
+				writer(r.toRange().String(simple))
+			case Range:
+				doAsCidr(writer, r, simple)
+			default:
+				panic("should not reached")
 			}
 		}
 	}
@@ -504,7 +538,7 @@ func process(option *Option, outputFile string, inputFiles ...string) {
 	writer := bufio.NewWriter(target)
 	simple := !option.standard
 	for _, r := range result {
-		if option.outputAsRange {
+		if option.outputType == OutputTypeRange {
 			_, err := writer.WriteString(r.toRange().String(simple) + "\n")
 			if err != nil {
 				panic(err)
