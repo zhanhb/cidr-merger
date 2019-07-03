@@ -62,37 +62,37 @@ func (r *Range) ToRange() *Range {
 }
 
 type IpWrapper struct {
-	value net.IP
+	net.IP
 }
 
 func (r IpWrapper) String(bool) string {
-	return r.value.String()
+	return r.IP.String()
 }
 func (r IpWrapper) ToIpNets() []net.IPNet {
-	ipBits := len(r.value) * 8
+	ipBits := len(r.IP) * 8
 	return []net.IPNet{
-		{IP: r.value, Mask: net.CIDRMask(ipBits, ipBits)},
+		{IP: r.IP, Mask: net.CIDRMask(ipBits, ipBits)},
 	}
 }
 func (r IpWrapper) ToRange() *Range {
-	return &Range{start: r.value, end: r.value}
+	return &Range{start: r.IP, end: r.IP}
 }
 
 type IpNetWrapper struct {
-	value *net.IPNet
+	*net.IPNet
 }
 
 func (r IpNetWrapper) String(simple bool) string {
-	if ones, bts := r.value.Mask.Size(); simple && ones == bts {
-		return r.value.IP.String()
+	if ones, bts := r.IPNet.Mask.Size(); simple && ones == bts {
+		return r.IPNet.IP.String()
 	}
-	return r.value.String()
+	return r.IPNet.String()
 }
 func (r IpNetWrapper) ToIpNets() []net.IPNet {
-	return []net.IPNet{*r.value}
+	return []net.IPNet{*r.IPNet}
 }
 func (r IpNetWrapper) ToRange() *Range {
-	ipNet := r.value
+	ipNet := r.IPNet
 	return &Range{start: ipNet.IP, end: lastIp(ipNet)}
 }
 
