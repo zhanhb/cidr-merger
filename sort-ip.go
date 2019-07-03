@@ -539,6 +539,14 @@ func mainNormal(option *Option) {
 }
 
 func main() {
+	defer func() {
+		if err := recover(); err != nil {
+			//noinspection GoUnhandledErrorResult
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(2)
+		}
+	}()
+
 	getopt.HelpColumn = 28
 	option := parseOptions()
 
