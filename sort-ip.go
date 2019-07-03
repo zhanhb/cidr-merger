@@ -500,11 +500,7 @@ func process(option *Option, outputFile string, inputFiles ...string) {
 	simple := !option.standard
 	for _, r := range result {
 		if option.outputAsRange {
-			_, err := writer.WriteString(r.toRange().String(simple))
-			if err != nil {
-				panic(err)
-			}
-			_, err = writer.WriteRune('\n')
+			_, err := writer.WriteString(r.toRange().String(simple) + "\n")
 			if err != nil {
 				panic(err)
 			}
