@@ -13,9 +13,19 @@ import (
 )
 
 type Wrapper interface {
-	String(simple bool) string
+	ToIp() net.IP // return nil if can't presentated as a single ip
 	ToIpNets() []net.IPNet
 	ToRange() *Range
+	String() string
+}
+
+func simpler(r Wrapper, simple bool) Wrapper {
+	if simple {
+		if ip := r.ToIp(); ip != nil {
+			return IpWrapper{ip}
+		}
+	}
+	return r
 }
 
 type Range struct {
@@ -26,11 +36,11 @@ type Range struct {
 func (r *Range) familyLength() int {
 	return len(r.start)
 }
-func (r *Range) String(simple bool) string {
-	if simple && bytes.Equal(r.start, r.end) {
-		return r.start.String()
+func (r *Range) ToIp() net.IP {
+	if bytes.Equal(r.start, r.end) {
+		return r.start
 	}
-	return r.start.String() + "-" + r.end.String()
+	return nil
 }
 func (r *Range) ToIpNets() []net.IPNet {
 	end := r.end
@@ -60,13 +70,16 @@ func (r *Range) ToIpNets() []net.IPNet {
 func (r *Range) ToRange() *Range {
 	return r
 }
+func (r *Range) String() string {
+	return r.start.String() + "-" + r.end.String()
+}
 
 type IpWrapper struct {
 	net.IP
 }
 
-func (r IpWrapper) String(bool) string {
-	return r.IP.String()
+func (r IpWrapper) ToIp() net.IP {
+	return r.IP
 }
 func (r IpWrapper) ToIpNets() []net.IPNet {
 	ipBits := len(r.IP) * 8
@@ -82,11 +95,11 @@ type IpNetWrapper struct {
 	*net.IPNet
 }
 
-func (r IpNetWrapper) String(simple bool) string {
-	if ones, bts := r.IPNet.Mask.Size(); simple && ones == bts {
-		return r.IPNet.IP.String()
+func (r IpNetWrapper) ToIp() net.IP {
+	if ones, bts := r.IPNet.Mask.Size(); ones == bts {
+		return r.IPNet.IP
 	}
-	return r.IPNet.String()
+	return nil
 }
 func (r IpNetWrapper) ToIpNets() []net.IPNet {
 	return []net.IPNet{*r.IPNet}
@@ -407,30 +420,30 @@ func readAll(inputFiles ...string) []Wrapper {
 }
 
 func mainConsole(option *Option) {
-	doAsCidr := func(writer func(string), r Wrapper, simple bool) {
+	doAsCidr := func(writer func(interface{}), r Wrapper, simple bool) {
 		for _, cidr := range r.ToIpNets() {
-			writer(IpNetWrapper{&cidr}.String(simple))
+			writer(simpler(IpNetWrapper{&cidr}, simple))
 		}
 	}
 
 	simple, outputType := !option.standard, option.outputType
-	var printer func(writer func(string), r Wrapper)
+	var printer func(writer func(interface{}), r Wrapper)
 	switch outputType {
 	case OutputTypeRange:
-		printer = func(writer func(string), r Wrapper) {
-			writer(r.ToRange().String(simple))
+		printer = func(writer func(interface{}), r Wrapper) {
+			writer(simpler(r.ToRange(), simple))
 		}
 	case OutputTypeCidr:
-		printer = func(writer func(string), r Wrapper) {
+		printer = func(writer func(interface{}), r Wrapper) {
 			doAsCidr(writer, r, simple)
 		}
 	default:
-		printer = func(writer func(string), r Wrapper) {
+		printer = func(writer func(interface{}), r Wrapper) {
 			switch r.(type) {
 			case IpWrapper:
 				doAsCidr(writer, r, false)
 			case IpNetWrapper:
-				writer(r.ToRange().String(simple))
+				writer(simpler(r.ToRange(), simple))
 			case *Range:
 				doAsCidr(writer, r, simple)
 			default:
@@ -448,7 +461,7 @@ func mainConsole(option *Option) {
 					panic(err)
 				}
 			} else {
-				printer(func(s string) {
+				printer(func(s interface{}) {
 					if _, err = fmt.Fprintln(os.Stdout, s); err != nil {
 						panic(err)
 					}
@@ -519,13 +532,13 @@ func process(option *Option, outputFile string, inputFiles ...string) {
 	simple := !option.standard
 	for _, r := range result {
 		if option.outputType == OutputTypeRange {
-			_, err := fmt.Fprintln(writer, r.ToRange().String(simple))
+			_, err := fmt.Fprintln(writer, simpler(r.ToRange(), simple))
 			if err != nil {
 				panic(err)
 			}
 		} else {
 			for _, ipNet := range r.ToIpNets() {
-				_, err := fmt.Fprintln(writer, IpNetWrapper{&ipNet}.String(simple))
+				_, err := fmt.Fprintln(writer, simpler(IpNetWrapper{&ipNet}, simple))
 				if err != nil {
 					panic(err)
 				}
