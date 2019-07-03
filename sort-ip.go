@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"github.com/pborman/getopt/v2"
 	"math/bits"
@@ -26,7 +27,7 @@ func (r Range) familyLength() int {
 	return len(r.start)
 }
 func (r Range) String(simple bool) string {
-	if simple && r.start.Equal(r.end) {
+	if simple && bytes.Equal(r.start, r.end) {
 		return r.start.String()
 	}
 	return r.start.String() + "-" + r.end.String()
@@ -103,16 +104,11 @@ func (r IpNetWrapper) ToRange() Range {
 type Ranges []Range
 
 func lessThan(a, b net.IP) bool {
-	ipLen := len(a)
-	for i := 0; i < ipLen; i++ {
-		if a[i] < b[i] {
-			return true
-		}
-		if a[i] > b[i] {
-			return false
-		}
+	lenA, lenB := len(a), len(b)
+	if lenA != lenB {
+		return lenA < lenB
 	}
-	return false
+	return bytes.Compare(a, b) < 0
 }
 
 func max(a, b int) int {
