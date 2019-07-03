@@ -253,7 +253,7 @@ func parseOptions() Option {
 	outputAsCidrValue := options.FlagLong(&dummy, "cidr", 0, "print as ip/cidr (default if not console mode)").Value()
 	outputAsRange := options.BoolLong("range", 'r', "print as ip ranges")
 	emptyPolicy := options.EnumLong("empty-policy", 0,
-		[]string{"ignore", "skip", "error"}, "ignore",
+		[]string{"ignore", "skip", "error"}, "",
 		"indicate how to process empty input file\n  ignore(default): process as if it is not empty\n  skip: don't create output file\n  error: raise an error and exit")
 	outputFileValue := options.FlagLong(&outputFile, "output", 'o', "output values to <file>, if multiple output files specified, the count should be same as input files, and will be processed respectively", "file").Value()
 	errorEmpty := options.FlagLong(&dummy, "error-if-empty", 'e', "same as --empty-policy=error").Value()
@@ -323,6 +323,9 @@ func parseOptions() Option {
 		inputFiles = []string{"-"}
 	} else {
 		inputFiles = args
+	}
+	if *emptyPolicy == "" {
+		*emptyPolicy = "ignore"
 	}
 	return Option{
 		inputFiles:    inputFiles,
