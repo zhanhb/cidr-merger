@@ -17,7 +17,6 @@ type Range struct {
 }
 
 type Wrapper interface {
-	familyLength() int
 	String(simple bool) string
 	toIpNets() []net.IPNet
 	toRange() Range
@@ -70,9 +69,6 @@ type IpWrapper struct {
 	value net.IP
 }
 
-func (r IpWrapper) familyLength() int {
-	return len(r.value)
-}
 func (r IpWrapper) String(bool) string {
 	return r.value.String()
 }
@@ -90,9 +86,6 @@ type IpNetWrapper struct {
 	value *net.IPNet
 }
 
-func (r IpNetWrapper) familyLength() int {
-	return len(r.value.IP)
-}
 func (r IpNetWrapper) String(simple bool) string {
 	if ones, bts := r.value.Mask.Size(); simple && ones == bts {
 		return r.value.IP.String()
@@ -373,20 +366,21 @@ func parse(line string) (Wrapper, error) {
 		end := parseIp(line[index+1:])
 		if len(start) == len(end) && start != nil {
 			if lessThan(end, start) {
-				return nil, &net.ParseError{Type: "Illegal range", Text: line}
+				return nil, &net.ParseError{Type: "range", Text: line}
 			}
 			return Range{start: start, end: end}, nil
 		}
 	}
-	return nil, &net.ParseError{Type: "failed to parse specified string", Text: line}
+	return nil, &net.ParseError{Type: "ip/cidr/range", Text: line}
 }
 
 func readAll(input *bufio.Scanner) []Wrapper {
 	var arr []Wrapper
 	for input.Scan() {
-		maybe, err := parse(input.Text())
+		text := input.Text()
+		maybe, err := parse(text)
 		if err != nil {
-			_, err = fmt.Fprintf(os.Stderr, "ignore line '%s'\n", err)
+			_, err = fmt.Fprintf(os.Stderr, "%v\n", err)
 			if err != nil {
 				panic(err)
 			}
@@ -544,7 +538,7 @@ func mainNormal(option *Option) {
 			process(option, option.outputFiles[i], option.inputFiles[i])
 		}
 	} else {
-		panic("Input files' size don't match output files' size")
+		panic("Input files' size doesn't match output files' size")
 	}
 }
 
