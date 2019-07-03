@@ -46,15 +46,10 @@ func (r Range) ToIpNets() []net.IPNet {
 	for {
 		// assert s <= end;
 		// will never overflow
-		var size = addOne(minus(end, s))
-		cidr := max(leadingZero(size)+1, ipBits-trailingZeros(s))
-		mask := net.CIDRMask(cidr, ipBits)
-		if len(mask)*8 != ipBits {
-			panic("assert failed: " + s.String() + " " + mask.String())
-		}
-		ipNet := net.IPNet{IP: s, Mask: mask}
-		tmp := lastIp(&ipNet)
+		cidr := max(leadingZero(addOne(minus(end, s)))+1, ipBits-trailingZeros(s))
+		ipNet := net.IPNet{IP: s, Mask: net.CIDRMask(cidr, ipBits)}
 		result = append(result, ipNet)
+		tmp := lastIp(&ipNet)
 		if !lessThan(tmp, end) {
 			return result
 		}
@@ -401,6 +396,9 @@ func read(input *bufio.Scanner) []Wrapper {
 			}
 			arr = append(arr, maybe)
 		}
+	}
+	if err := input.Err(); err != nil {
+		panic(err)
 	}
 	return arr
 }
