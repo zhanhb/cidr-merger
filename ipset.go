@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"math/bits"
 	"net"
+	"sort"
 )
 
 type IRange interface {
@@ -191,4 +192,64 @@ func minus(a, b net.IP) net.IP {
 		panic("assert failed: subtract " + b.String() + " from " + a.String())
 	}
 	return result
+}
+
+func convertBatch(wrappers []IRange, simpler func(IRange) IRange, outputType OutputType) []IRange {
+	result := make([]IRange, 0, len(wrappers))
+	if outputType == OutputTypeRange {
+		for _, r := range wrappers {
+			result = append(result, simpler(r.ToRange()))
+		}
+	} else {
+		for _, r := range wrappers {
+			for _, ipNet := range r.ToIpNets() {
+				// can't use range iterator, for operator address of is taken
+				// it seems a trick of golang here
+				result = append(result, simpler(IpNetWrapper{ipNet}))
+			}
+		}
+	}
+	return result
+}
+
+type Ranges []*Range
+
+func (s Ranges) Len() int { return len(s) }
+func (s Ranges) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+func (s Ranges) Less(i, j int) bool {
+	return lessThan(s[i].start, s[j].start)
+}
+
+func sortAndMerge(wrappers []IRange) []IRange {
+	// assume len(wrappers) > 1
+	ranges := make([]*Range, 0, len(wrappers))
+	for _, e := range wrappers {
+		ranges = append(ranges, e.ToRange())
+	}
+	sort.Sort(Ranges(ranges))
+
+	res := make([]IRange, 0, len(ranges))
+	now := ranges[0]
+	familyLength := now.familyLength()
+	start, end := now.start, now.end
+	for i := 1; i < len(ranges); i++ {
+		now := ranges[i]
+		if fl := now.familyLength(); fl != familyLength {
+			res = append(res, &Range{start, end})
+			familyLength = fl
+			start, end = now.start, now.end
+			continue
+		}
+		if allFF(end) || !lessThan(addOne(end), now.start) {
+			if lessThan(end, now.end) {
+				end = now.end
+			}
+		} else {
+			res = append(res, &Range{start, end})
+			start, end = now.start, now.end
+		}
+	}
+	return append(res, &Range{start, end})
 }
