@@ -14,19 +14,10 @@ import (
 )
 
 type Wrapper interface {
-	ToIp() net.IP // return nil if can't presentated as a single ip
+	ToIp() net.IP // return nil if can't be represented as a single ip
 	ToIpNets() []net.IPNet
 	ToRange() *Range
 	String() string
-}
-
-func simpler(r Wrapper, simple bool) Wrapper {
-	if simple {
-		if ip := r.ToIp(); ip != nil {
-			return IpWrapper{ip}
-		}
-	}
-	return r
 }
 
 type Range struct {
@@ -79,35 +70,35 @@ type IpWrapper struct {
 	net.IP
 }
 
-func (r IpWrapper) ToIp() net.IP {
+func (r *IpWrapper) ToIp() net.IP {
 	return r.IP
 }
-func (r IpWrapper) ToIpNets() []net.IPNet {
+func (r *IpWrapper) ToIpNets() []net.IPNet {
 	ipBits := len(r.IP) * 8
 	return []net.IPNet{
 		{IP: r.IP, Mask: net.CIDRMask(ipBits, ipBits)},
 	}
 }
-func (r IpWrapper) ToRange() *Range {
+func (r *IpWrapper) ToRange() *Range {
 	return &Range{start: r.IP, end: r.IP}
 }
 
 type IpNetWrapper struct {
-	*net.IPNet
+	net.IPNet
 }
 
-func (r IpNetWrapper) ToIp() net.IP {
+func (r *IpNetWrapper) ToIp() net.IP {
 	if ones, bts := r.IPNet.Mask.Size(); ones == bts {
 		return r.IPNet.IP
 	}
 	return nil
 }
-func (r IpNetWrapper) ToIpNets() []net.IPNet {
-	return []net.IPNet{*r.IPNet}
+func (r *IpNetWrapper) ToIpNets() []net.IPNet {
+	return []net.IPNet{r.IPNet}
 }
-func (r IpNetWrapper) ToRange() *Range {
+func (r *IpNetWrapper) ToRange() *Range {
 	ipNet := r.IPNet
-	return &Range{start: ipNet.IP, end: lastIp(ipNet)}
+	return &Range{start: ipNet.IP, end: lastIp(&ipNet)}
 }
 
 func lessThan(a, b net.IP) bool {
@@ -209,6 +200,13 @@ func minus(a, b net.IP) net.IP {
 	return result
 }
 
+//noinspection SpellCheckingInspection
+func fprintln(w io.Writer, a ...interface{}) {
+	if _, err := fmt.Fprintln(w, a...); err != nil {
+		panic(err)
+	}
+}
+
 type Ranges []*Range
 
 func (s Ranges) Len() int { return len(s) }
@@ -219,16 +217,16 @@ func (s Ranges) Less(i, j int) bool {
 	return lessThan(s[i].start, s[j].start)
 }
 
-type OutputType int
+type OutputType byte
 
 type Option struct {
 	inputFiles    []string
 	outputFiles   []string
+	simpler       func(Wrapper) Wrapper
+	emptyPolicy   string
 	outputType    OutputType
 	consoleMode   bool
-	standard      bool
 	originalOrder bool
-	emptyPolicy   string
 }
 
 const (
@@ -237,6 +235,25 @@ const (
 	OutputTypeCidr
 	OutputTypeRange
 )
+
+func printUsage(set *getopt.Set, file io.Writer, extra ...interface{}) {
+	if len(extra) > 0 {
+		fprintln(file, extra...)
+	}
+	for _, r := range []interface{}{
+		strings.Join([]string{
+			"Usage:",
+			set.Program(),
+			"[OPTION]... [FILE]...",
+		}, " "),
+		"Write sorted result to standard output.",
+		"",
+		"Options:",
+	} {
+		fprintln(file, r)
+	}
+	set.PrintOptions(file)
+}
 
 func parseOptions() Option {
 	var (
@@ -283,28 +300,9 @@ func parseOptions() Option {
 
 	var outputFiles []string
 
-	printUsage := func(file io.Writer) {
-		var results = []interface{}{
-			strings.Join([]string{
-				"Usage:",
-				options.Program(),
-				"[OPTION]... [FILE]...",
-			}, " "),
-			"Write sorted result to standard output.",
-			"",
-			"Options:",
-		}
-		for _, r := range results {
-			if _, err := fmt.Fprintln(file, r); err != nil {
-				panic(err)
-			}
-		}
-		options.PrintOptions(file)
-	}
-
 	customAction := map[getopt.Value]func() bool{
 		help: func() bool {
-			printUsage(os.Stdout)
+			printUsage(options, os.Stdout)
 			return false
 		}, version: func() bool {
 			println("cidr merger 0.1")
@@ -320,7 +318,11 @@ func parseOptions() Option {
 			*k = !dummy
 			return true
 		} else if k := policyDelegate[value]; k != "" {
-			*emptyPolicy = k
+			if dummy {
+				*emptyPolicy = k
+			} else {
+				*emptyPolicy = ""
+			}
 			return true
 		} else if k := outputMap[value]; k != OutputTypeNotSpecified {
 			outputType = k
@@ -330,10 +332,7 @@ func parseOptions() Option {
 		}
 		return opt.Seen()
 	}); err != nil {
-		if _, err = fmt.Fprintln(os.Stderr, err); err != nil {
-			panic(err)
-		}
-		printUsage(os.Stderr)
+		printUsage(options, os.Stderr, err)
 		os.Exit(1)
 	}
 
@@ -347,12 +346,23 @@ func parseOptions() Option {
 	} else {
 		inputFiles = args
 	}
+	simpler := func(r Wrapper) Wrapper {
+		if ip := r.ToIp(); ip != nil {
+			return &IpWrapper{ip}
+		}
+		return r
+	}
+	if *standard {
+		simpler = func(r Wrapper) Wrapper {
+			return r
+		}
+	}
 	return Option{
 		inputFiles:    inputFiles,
 		outputFiles:   outputFiles,
 		outputType:    outputType,
 		consoleMode:   *consoleMode,
-		standard:      *standard,
+		simpler:       simpler,
 		originalOrder: *originalOrder,
 		emptyPolicy:   *emptyPolicy,
 	}
@@ -369,24 +379,24 @@ func parseIp(str string) net.IP {
 }
 
 // maybe IpCidr, Range or Ip is returned
-func parse(line string) (Wrapper, error) {
-	if _, network, err := net.ParseCIDR(line); err == nil {
-		return IpNetWrapper{network}, nil
+func parse(text string) (Wrapper, error) {
+	if _, network, err := net.ParseCIDR(text); err == nil {
+		return &IpNetWrapper{*network}, nil
 	}
-	if ip := parseIp(line); ip != nil {
-		return IpWrapper{ip}, nil
+	if ip := parseIp(text); ip != nil {
+		return &IpWrapper{ip}, nil
 	}
-	if index := strings.IndexByte(line, '-'); index != -1 {
-		start := parseIp(line[:index])
-		end := parseIp(line[index+1:])
+	if index := strings.IndexByte(text, '-'); index != -1 {
+		start := parseIp(text[:index])
+		end := parseIp(text[index+1:])
 		if len(start) == len(end) && start != nil {
 			if lessThan(end, start) {
-				return nil, &net.ParseError{Type: "range", Text: line}
+				return nil, &net.ParseError{Type: "range", Text: text}
 			}
 			return &Range{start: start, end: end}, nil
 		}
 	}
-	return nil, &net.ParseError{Type: "ip/cidr/range", Text: line}
+	return nil, &net.ParseError{Type: "ip/cidr/range", Text: text}
 }
 
 func read(input *bufio.Scanner) []Wrapper {
@@ -395,17 +405,14 @@ func read(input *bufio.Scanner) []Wrapper {
 		if text := input.Text(); text != "" {
 			maybe, err := parse(text)
 			if err != nil {
-				_, err = fmt.Fprintln(os.Stderr, err)
-				if err != nil {
-					panic(err)
-				}
-				continue
+				fprintln(os.Stderr, err)
+			} else {
+				arr = append(arr, maybe)
 			}
-			arr = append(arr, maybe)
 		}
-	}
-	if err := input.Err(); err != nil {
-		panic(err)
+		if err := input.Err(); err != nil {
+			panic(err)
+		}
 	}
 	return arr
 }
@@ -431,33 +438,34 @@ func readAll(inputFiles ...string) []Wrapper {
 	return result
 }
 
-func mainConsole(option *Option) {
-	doAsCidr := func(writer func(interface{}), r Wrapper, simple bool) {
-		for _, cidr := range r.ToIpNets() {
-			writer(simpler(IpNetWrapper{&cidr}, simple))
-		}
+func printAsIpNets(writer io.Writer, r Wrapper, simpler func(Wrapper) Wrapper) {
+	for _, cidr := range r.ToIpNets() {
+		fprintln(writer, simpler(&IpNetWrapper{cidr}))
 	}
+}
 
-	simple, outputType := !option.standard, option.outputType
-	var printer func(writer func(interface{}), r Wrapper)
+func mainConsole(option *Option) {
+	outputType := option.outputType
+	simpler := option.simpler
+	var printer func(writer io.Writer, r Wrapper)
 	switch outputType {
 	case OutputTypeRange:
-		printer = func(writer func(interface{}), r Wrapper) {
-			writer(simpler(r.ToRange(), simple))
+		printer = func(writer io.Writer, r Wrapper) {
+			fprintln(writer, simpler(r.ToRange()))
 		}
 	case OutputTypeCidr:
-		printer = func(writer func(interface{}), r Wrapper) {
-			doAsCidr(writer, r, simple)
+		printer = func(writer io.Writer, r Wrapper) {
+			printAsIpNets(writer, r, simpler)
 		}
 	default:
-		printer = func(writer func(interface{}), r Wrapper) {
+		printer = func(writer io.Writer, r Wrapper) {
 			switch r.(type) {
-			case IpWrapper:
-				doAsCidr(writer, r, false)
-			case IpNetWrapper:
-				writer(simpler(r.ToRange(), simple))
+			case *IpWrapper:
+				fprintln(writer, r.ToIpNets()[0].String())
+			case *IpNetWrapper:
+				fprintln(writer, simpler(r.ToRange()))
 			case *Range:
-				doAsCidr(writer, r, simple)
+				printAsIpNets(writer, r, simpler)
 			default:
 				panic("unreachable")
 			}
@@ -469,15 +477,9 @@ func mainConsole(option *Option) {
 	for input.Scan() {
 		if text := input.Text(); text != "" {
 			if r, err := parse(text); err != nil {
-				if _, err = fmt.Fprintln(os.Stderr, err); err != nil {
-					panic(err)
-				}
+				fprintln(os.Stderr, err)
 			} else {
-				printer(func(s interface{}) {
-					if _, err = fmt.Fprintln(os.Stdout, s); err != nil {
-						panic(err)
-					}
-				}, r)
+				printer(os.Stdout, r)
 			}
 		}
 	}
@@ -495,71 +497,79 @@ func process(option *Option, outputFile string, inputFiles ...string) {
 			// empty string if not specified, or "ignore"
 		}
 	}
-	if arrLen := len(result); option.originalOrder || arrLen < 2 {
+	if option.originalOrder || len(result) < 2 {
 		// noop
 	} else {
-		var ranges []*Range
-		for _, e := range result {
-			ranges = append(ranges, e.ToRange())
-		}
-		sort.Sort(Ranges(ranges))
-
-		var res []Wrapper
-		now := ranges[0]
-		familyLength := now.familyLength()
-		start, end := now.start, now.end
-		for i := 1; i < arrLen; i++ {
-			now := ranges[i]
-			if fl := now.familyLength(); fl != familyLength {
-				res = append(res, &Range{start, end})
-				familyLength = fl
-				start, end = now.start, now.end
-				continue
-			}
-			if allFF(end) || !lessThan(addOne(end), now.start) {
-				if lessThan(end, now.end) {
-					end = now.end
-				}
-			} else {
-				res = append(res, &Range{start, end})
-				start, end = now.start, now.end
-			}
-		}
-		res = append(res, &Range{start, end})
-		result = res
+		result = sortAndMerge(result)
 	}
+	result = convertBatch(result, option.simpler, option.outputType)
 	var target *os.File
 	if outputFile == "-" {
 		target = os.Stdout
+	} else if file, err := os.Create(outputFile); err != nil {
+		panic(err)
 	} else {
-		file, err := os.Create(outputFile)
-		if err != nil {
-			panic(err)
-		}
 		//noinspection GoUnhandledErrorResult
 		defer file.Close()
 		target = file
 	}
 	writer := bufio.NewWriter(target)
-	simple := !option.standard
 	for _, r := range result {
-		if option.outputType == OutputTypeRange {
-			_, err := fmt.Fprintln(writer, simpler(r.ToRange(), simple))
-			if err != nil {
-				panic(err)
-			}
-		} else {
-			for _, ipNet := range r.ToIpNets() {
-				_, err := fmt.Fprintln(writer, simpler(IpNetWrapper{&ipNet}, simple))
-				if err != nil {
-					panic(err)
-				}
-			}
-		}
+		fprintln(writer, r)
 	}
 	if err := writer.Flush(); err != nil {
 		panic(err)
 	}
+}
+
+func convertBatch(wrappers []Wrapper, simpler func(Wrapper) Wrapper, outputType OutputType) []Wrapper {
+	result := make([]Wrapper, 0, len(wrappers))
+	if outputType == OutputTypeRange {
+		for _, r := range wrappers {
+			result = append(result, simpler(r.ToRange()))
+		}
+	} else {
+		for _, r := range wrappers {
+			for _, ipNet := range r.ToIpNets() {
+				// can't use range iterator, for operator address of is taken
+				// it seems a trick of golang here
+				result = append(result, simpler(&IpNetWrapper{ipNet}))
+			}
+		}
+	}
+	return result
+}
+
+func sortAndMerge(wrappers []Wrapper) []Wrapper {
+	// assume len(wrappers) > 1
+	ranges := make([]*Range, 0, len(wrappers))
+	for _, e := range wrappers {
+		ranges = append(ranges, e.ToRange())
+	}
+	sort.Sort(Ranges(ranges))
+
+	res := make([]Wrapper, 0, len(ranges))
+	now := ranges[0]
+	familyLength := now.familyLength()
+	start, end := now.start, now.end
+	for i := 1; i < len(ranges); i++ {
+		now := ranges[i]
+		if fl := now.familyLength(); fl != familyLength {
+			res = append(res, &Range{start, end})
+			familyLength = fl
+			start, end = now.start, now.end
+			continue
+		}
+		if allFF(end) || !lessThan(addOne(end), now.start) {
+			if lessThan(end, now.end) {
+				end = now.end
+			}
+		} else {
+			res = append(res, &Range{start, end})
+			start, end = now.start, now.end
+		}
+	}
+	return append(res, &Range{start, end})
 }
 
 func mainNormal(option *Option) {
