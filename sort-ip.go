@@ -157,7 +157,7 @@ func lastIp(ipNet *net.IPNet) net.IP {
 	ipLen := len(ip)
 	res := make(net.IP, ipLen)
 	if len(mask) != ipLen {
-		panic("unreachable: unexpected IPNet " + ipNet.String())
+		panic("assert failed: unexpected IPNet " + ipNet.String())
 	}
 	for i := 0; i < ipLen; i++ {
 		res[i] = ip[i] | ^mask[i]
@@ -177,7 +177,7 @@ func addOne(ip net.IP) net.IP {
 		}
 	}
 	if add != 0 {
-		panic("unreachable: unexpected ip " + ip.String())
+		panic("assert failed: unexpected ip " + ip.String())
 	}
 	return to
 }
@@ -195,7 +195,7 @@ func minus(a, b net.IP) net.IP {
 		}
 	}
 	if borrow != 0 {
-		panic("unreachable: subtract " + b.String() + " from " + a.String())
+		panic("assert failed: subtract " + b.String() + " from " + a.String())
 	}
 	return result
 }
