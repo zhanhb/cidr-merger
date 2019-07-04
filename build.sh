@@ -1,4 +1,5 @@
 #!/bin/sh
+set -e
 LDFLAGS="-X main.VERSION=$VERSION -s -w"
 GCFLAGS=""
 GOMIPS=softfloat
