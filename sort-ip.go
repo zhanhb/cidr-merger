@@ -15,7 +15,7 @@ import (
 
 type Wrapper interface {
 	ToIp() net.IP // return nil if can't be represented as a single ip
-	ToIpNets() []net.IPNet
+	ToIpNets() []*net.IPNet
 	ToRange() *Range
 	String() string
 }
@@ -34,24 +34,24 @@ func (r *Range) ToIp() net.IP {
 	}
 	return nil
 }
-func (r *Range) ToIpNets() []net.IPNet {
+func (r *Range) ToIpNets() []*net.IPNet {
 	end := r.end
 	s := r.start
 	ipBits := len(s) * 8
 	isAllZero := allZero(s)
 	if isAllZero && allFF(end) {
-		return []net.IPNet{
+		return []*net.IPNet{
 			{IP: s, Mask: net.CIDRMask(0, ipBits)},
 		}
 	}
-	var result []net.IPNet
+	var result []*net.IPNet
 	for {
 		// assert s <= end;
 		// will never overflow
 		cidr := max(leadingZero(addOne(minus(end, s)))+1, ipBits-trailingZeros(s))
-		ipNet := net.IPNet{IP: s, Mask: net.CIDRMask(cidr, ipBits)}
+		ipNet := &net.IPNet{IP: s, Mask: net.CIDRMask(cidr, ipBits)}
 		result = append(result, ipNet)
-		tmp := lastIp(&ipNet)
+		tmp := lastIp(ipNet)
 		if !lessThan(tmp, end) {
 			return result
 		}
@@ -70,35 +70,35 @@ type IpWrapper struct {
 	net.IP
 }
 
-func (r *IpWrapper) ToIp() net.IP {
+func (r IpWrapper) ToIp() net.IP {
 	return r.IP
 }
-func (r *IpWrapper) ToIpNets() []net.IPNet {
+func (r IpWrapper) ToIpNets() []*net.IPNet {
 	ipBits := len(r.IP) * 8
-	return []net.IPNet{
+	return []*net.IPNet{
 		{IP: r.IP, Mask: net.CIDRMask(ipBits, ipBits)},
 	}
 }
-func (r *IpWrapper) ToRange() *Range {
+func (r IpWrapper) ToRange() *Range {
 	return &Range{start: r.IP, end: r.IP}
 }
 
 type IpNetWrapper struct {
-	net.IPNet
+	*net.IPNet
 }
 
-func (r *IpNetWrapper) ToIp() net.IP {
+func (r IpNetWrapper) ToIp() net.IP {
 	if ones, bts := r.IPNet.Mask.Size(); ones == bts {
 		return r.IPNet.IP
 	}
 	return nil
 }
-func (r *IpNetWrapper) ToIpNets() []net.IPNet {
-	return []net.IPNet{r.IPNet}
+func (r IpNetWrapper) ToIpNets() []*net.IPNet {
+	return []*net.IPNet{r.IPNet}
 }
-func (r *IpNetWrapper) ToRange() *Range {
+func (r IpNetWrapper) ToRange() *Range {
 	ipNet := r.IPNet
-	return &Range{start: ipNet.IP, end: lastIp(&ipNet)}
+	return &Range{start: ipNet.IP, end: lastIp(ipNet)}
 }
 
 func lessThan(a, b net.IP) bool {
@@ -255,7 +255,7 @@ func printUsage(set *getopt.Set, file io.Writer, extra ...interface{}) {
 	set.PrintOptions(file)
 }
 
-func parseOptions() Option {
+func parseOptions() *Option {
 	var (
 		dummy      bool
 		outputFile string
@@ -348,7 +348,7 @@ func parseOptions() Option {
 	}
 	simpler := func(r Wrapper) Wrapper {
 		if ip := r.ToIp(); ip != nil {
-			return &IpWrapper{ip}
+			return IpWrapper{ip}
 		}
 		return r
 	}
@@ -357,7 +357,7 @@ func parseOptions() Option {
 			return r
 		}
 	}
-	return Option{
+	return &Option{
 		inputFiles:    inputFiles,
 		outputFiles:   outputFiles,
 		outputType:    outputType,
@@ -380,23 +380,27 @@ func parseIp(str string) net.IP {
 
 // maybe IpCidr, Range or Ip is returned
 func parse(text string) (Wrapper, error) {
-	if _, network, err := net.ParseCIDR(text); err == nil {
-		return &IpNetWrapper{*network}, nil
+	if index := strings.IndexByte(text, '/'); index != -1 {
+		if _, network, err := net.ParseCIDR(text); err == nil {
+			return IpNetWrapper{network}, nil
+		} else {
+			return nil, err
+		}
 	}
 	if ip := parseIp(text); ip != nil {
-		return &IpWrapper{ip}, nil
+		return IpWrapper{ip}, nil
 	}
 	if index := strings.IndexByte(text, '-'); index != -1 {
 		start := parseIp(text[:index])
 		end := parseIp(text[index+1:])
-		if len(start) == len(end) && start != nil {
-			if lessThan(end, start) {
-				return nil, &net.ParseError{Type: "range", Text: text}
+		if start != nil && end != nil {
+			if len(start) == len(end) && !lessThan(end, start) {
+				return &Range{start: start, end: end}, nil
 			}
-			return &Range{start: start, end: end}, nil
 		}
+		return nil, &net.ParseError{Type: "range", Text: text}
 	}
-	return nil, &net.ParseError{Type: "ip/cidr/range", Text: text}
+	return nil, &net.ParseError{Type: "ip/CIDR address/range", Text: text}
 }
 
 func read(input *bufio.Scanner) []Wrapper {
@@ -440,7 +444,7 @@ func readAll(inputFiles ...string) []Wrapper {
 
 func printAsIpNets(writer io.Writer, r Wrapper, simpler func(Wrapper) Wrapper) {
 	for _, cidr := range r.ToIpNets() {
-		fprintln(writer, simpler(&IpNetWrapper{cidr}))
+		fprintln(writer, simpler(IpNetWrapper{cidr}))
 	}
 }
 
@@ -460,9 +464,9 @@ func mainConsole(option *Option) {
 	default:
 		printer = func(writer io.Writer, r Wrapper) {
 			switch r.(type) {
-			case *IpWrapper:
+			case IpWrapper:
 				fprintln(writer, r.ToIpNets()[0].String())
-			case *IpNetWrapper:
+			case IpNetWrapper:
 				fprintln(writer, simpler(r.ToRange()))
 			case *Range:
 				printAsIpNets(writer, r, simpler)
@@ -533,7 +537,7 @@ func convertBatch(wrappers []Wrapper, simpler func(Wrapper) Wrapper, outputType 
 			for _, ipNet := range r.ToIpNets() {
 				// can't use range iterator, for operator address of is taken
 				// it seems a trick of golang here
-				result = append(result, simpler(&IpNetWrapper{ipNet}))
+				result = append(result, simpler(IpNetWrapper{ipNet}))
 			}
 		}
 	}
@@ -601,8 +605,8 @@ func main() {
 
 	getopt.HelpColumn = 28
 	if option := parseOptions(); option.consoleMode {
-		mainConsole(&option)
+		mainConsole(option)
 	} else {
-		mainNormal(&option)
+		mainNormal(option)
 	}
 }
