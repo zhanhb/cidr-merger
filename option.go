@@ -136,16 +136,9 @@ func parseOptions() *Option {
 	} else {
 		inputFiles = args
 	}
-	simpler := func(r IRange) IRange {
-		if ip := r.ToIp(); ip != nil {
-			return IpWrapper{ip}
-		}
-		return r
-	}
+	simpler := singleOrSelf
 	if *standard {
-		simpler = func(r IRange) IRange {
-			return r
-		}
+		simpler = returnSelf
 	}
 	return &Option{
 		inputFiles:    inputFiles,

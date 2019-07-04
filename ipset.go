@@ -253,3 +253,14 @@ func sortAndMerge(wrappers []IRange) []IRange {
 	}
 	return append(res, &Range{start, end})
 }
+
+func singleOrSelf(r IRange) IRange {
+	if ip := r.ToIp(); ip != nil {
+		return IpWrapper{ip}
+	}
+	return r
+}
+
+func returnSelf(r IRange) IRange {
+	return r
+}
