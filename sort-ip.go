@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-type Wrapper interface {
+type IRange interface {
 	ToIp() net.IP // return nil if can't be represented as a single ip
 	ToIpNets() []*net.IPNet
 	ToRange() *Range
@@ -222,7 +222,7 @@ type OutputType byte
 type Option struct {
 	inputFiles    []string
 	outputFiles   []string
-	simpler       func(Wrapper) Wrapper
+	simpler       func(IRange) IRange
 	emptyPolicy   string
 	outputType    OutputType
 	consoleMode   bool
@@ -346,14 +346,14 @@ func parseOptions() *Option {
 	} else {
 		inputFiles = args
 	}
-	simpler := func(r Wrapper) Wrapper {
+	simpler := func(r IRange) IRange {
 		if ip := r.ToIp(); ip != nil {
 			return IpWrapper{ip}
 		}
 		return r
 	}
 	if *standard {
-		simpler = func(r Wrapper) Wrapper {
+		simpler = func(r IRange) IRange {
 			return r
 		}
 	}
@@ -379,7 +379,7 @@ func parseIp(str string) net.IP {
 }
 
 // maybe IpCidr, Range or Ip is returned
-func parse(text string) (Wrapper, error) {
+func parse(text string) (IRange, error) {
 	if index := strings.IndexByte(text, '/'); index != -1 {
 		if _, network, err := net.ParseCIDR(text); err == nil {
 			return IpNetWrapper{network}, nil
@@ -403,8 +403,8 @@ func parse(text string) (Wrapper, error) {
 	return nil, &net.ParseError{Type: "ip/CIDR address/range", Text: text}
 }
 
-func read(input *bufio.Scanner) []Wrapper {
-	var arr []Wrapper
+func read(input *bufio.Scanner) []IRange {
+	var arr []IRange
 	for input.Scan() {
 		if text := input.Text(); text != "" {
 			maybe, err := parse(text)
@@ -421,8 +421,8 @@ func read(input *bufio.Scanner) []Wrapper {
 	return arr
 }
 
-func readAll(inputFiles ...string) []Wrapper {
-	var result []Wrapper
+func readAll(inputFiles ...string) []IRange {
+	var result []IRange
 	for _, inputFile := range inputFiles {
 		var input *bufio.Scanner
 		if inputFile == "-" {
@@ -442,7 +442,7 @@ func readAll(inputFiles ...string) []Wrapper {
 	return result
 }
 
-func printAsIpNets(writer io.Writer, r Wrapper, simpler func(Wrapper) Wrapper) {
+func printAsIpNets(writer io.Writer, r IRange, simpler func(IRange) IRange) {
 	for _, cidr := range r.ToIpNets() {
 		fprintln(writer, simpler(IpNetWrapper{cidr}))
 	}
@@ -451,18 +451,18 @@ func printAsIpNets(writer io.Writer, r Wrapper, simpler func(Wrapper) Wrapper) {
 func mainConsole(option *Option) {
 	outputType := option.outputType
 	simpler := option.simpler
-	var printer func(writer io.Writer, r Wrapper)
+	var printer func(writer io.Writer, r IRange)
 	switch outputType {
 	case OutputTypeRange:
-		printer = func(writer io.Writer, r Wrapper) {
+		printer = func(writer io.Writer, r IRange) {
 			fprintln(writer, simpler(r.ToRange()))
 		}
 	case OutputTypeCidr:
-		printer = func(writer io.Writer, r Wrapper) {
+		printer = func(writer io.Writer, r IRange) {
 			printAsIpNets(writer, r, simpler)
 		}
 	default:
-		printer = func(writer io.Writer, r Wrapper) {
+		printer = func(writer io.Writer, r IRange) {
 			switch r.(type) {
 			case IpWrapper:
 				fprintln(writer, r.ToIpNets()[0].String())
@@ -526,8 +526,8 @@ func process(option *Option, outputFile string, inputFiles ...string) {
 	}
 }
 
-func convertBatch(wrappers []Wrapper, simpler func(Wrapper) Wrapper, outputType OutputType) []Wrapper {
-	result := make([]Wrapper, 0, len(wrappers))
+func convertBatch(wrappers []IRange, simpler func(IRange) IRange, outputType OutputType) []IRange {
+	result := make([]IRange, 0, len(wrappers))
 	if outputType == OutputTypeRange {
 		for _, r := range wrappers {
 			result = append(result, simpler(r.ToRange()))
@@ -544,7 +544,7 @@ func convertBatch(wrappers []Wrapper, simpler func(Wrapper) Wrapper, outputType 
 	return result
 }
 
-func sortAndMerge(wrappers []Wrapper) []Wrapper {
+func sortAndMerge(wrappers []IRange) []IRange {
 	// assume len(wrappers) > 1
 	ranges := make([]*Range, 0, len(wrappers))
 	for _, e := range wrappers {
@@ -552,7 +552,7 @@ func sortAndMerge(wrappers []Wrapper) []Wrapper {
 	}
 	sort.Sort(Ranges(ranges))
 
-	res := make([]Wrapper, 0, len(ranges))
+	res := make([]IRange, 0, len(ranges))
 	now := ranges[0]
 	familyLength := now.familyLength()
 	start, end := now.start, now.end
