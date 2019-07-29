@@ -10,6 +10,8 @@ import (
 	"strings"
 )
 
+var VERSION = "SNAPSHOT"
+
 //noinspection SpellCheckingInspection
 func fprintln(w io.Writer, a ...interface{}) {
 	if _, err := fmt.Fprintln(w, a...); err != nil {

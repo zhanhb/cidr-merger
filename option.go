@@ -95,7 +95,7 @@ func parseOptions() *Option {
 			printUsage(options, os.Stdout)
 			return false
 		}, version: func() bool {
-			println("cidr merger 0.1")
+			println("cidr merger " + VERSION)
 			return false
 		}, outputFileValue: func() bool {
 			outputFiles = append(outputFiles, outputFile)
