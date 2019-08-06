@@ -29,11 +29,9 @@ func (r *Range) ToIp() net.IP {
 	return nil
 }
 func (r *Range) ToIpNets() []*net.IPNet {
-	end := r.end
-	s := r.start
+	s, end := r.start, r.end
 	ipBits := len(s) * 8
-	isAllZero := allZero(s)
-	if isAllZero && allFF(end) {
+	if allZero(s) && allFF(end) {
 		return []*net.IPNet{
 			{IP: s, Mask: net.CIDRMask(0, ipBits)},
 		}
@@ -50,7 +48,6 @@ func (r *Range) ToIpNets() []*net.IPNet {
 			return result
 		}
 		s = addOne(tmp)
-		isAllZero = false
 	}
 }
 func (r *Range) ToRange() *Range {
