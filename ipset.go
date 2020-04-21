@@ -79,7 +79,7 @@ type IpNetWrapper struct {
 }
 
 func (r IpNetWrapper) ToIp() net.IP {
-	if ones, bts := r.IPNet.Mask.Size(); ones == bts {
+	if allFF(r.IPNet.Mask) {
 		return r.IPNet.IP
 	}
 	return nil
@@ -106,7 +106,7 @@ func max(a, b int) int {
 	return a
 }
 
-func allFF(ip net.IP) bool {
+func allFF(ip []byte) bool {
 	for _, c := range ip {
 		if c != 0xff {
 			return false
