@@ -187,18 +187,18 @@ func minus(a, b net.IP) net.IP {
 	return result
 }
 
-func convertBatch(wrappers []IRange, simpler func(IRange) IRange, outputType OutputType) []IRange {
+func convertBatch(wrappers []IRange, outputType OutputType) []IRange {
 	result := make([]IRange, 0, len(wrappers))
 	if outputType == OutputTypeRange {
 		for _, r := range wrappers {
-			result = append(result, simpler(r.ToRange()))
+			result = append(result, r.ToRange())
 		}
 	} else {
 		for _, r := range wrappers {
 			for _, ipNet := range r.ToIpNets() {
 				// can't use range iterator, for operator address of is taken
 				// it seems a trick of golang here
-				result = append(result, simpler(IpNetWrapper{ipNet}))
+				result = append(result, IpNetWrapper{ipNet})
 			}
 		}
 	}

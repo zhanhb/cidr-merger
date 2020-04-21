@@ -161,7 +161,7 @@ func process(option *Option, outputFile string, inputFiles ...string) {
 	} else {
 		result = sortAndMerge(result)
 	}
-	result = convertBatch(result, option.simpler, option.outputType)
+	result = convertBatch(result, option.outputType)
 	var target *os.File
 	if outputFile == "-" {
 		target = os.Stdout
@@ -174,7 +174,7 @@ func process(option *Option, outputFile string, inputFiles ...string) {
 	}
 	writer := bufio.NewWriter(target)
 	for _, r := range result {
-		fprintln(writer, r)
+		fprintln(writer, option.simpler(r))
 	}
 	if err := writer.Flush(); err != nil {
 		panic(err)
