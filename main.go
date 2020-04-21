@@ -72,23 +72,27 @@ func read(input *bufio.Scanner) []IRange {
 	return arr
 }
 
+func readFile(inputFile string) []IRange {
+	var input *bufio.Scanner
+	if inputFile == "-" {
+		input = bufio.NewScanner(os.Stdin)
+	} else {
+		in, err := os.Open(inputFile)
+		if err != nil {
+			panic(err)
+		}
+		//noinspection GoUnhandledErrorResult
+		defer in.Close()
+		input = bufio.NewScanner(in)
+	}
+	input.Split(bufio.ScanWords)
+	return read(input)
+}
+
 func readAll(inputFiles ...string) []IRange {
 	var result []IRange
 	for _, inputFile := range inputFiles {
-		var input *bufio.Scanner
-		if inputFile == "-" {
-			input = bufio.NewScanner(os.Stdin)
-		} else {
-			in, err := os.Open(inputFile)
-			if err != nil {
-				panic(err)
-			}
-			//noinspection GoUnhandledErrorResult,GoDeferInLoop
-			defer in.Close()
-			input = bufio.NewScanner(in)
-		}
-		input.Split(bufio.ScanWords)
-		result = append(result, read(input)...)
+		result = append(result, readFile(inputFile)...)
 	}
 	return result
 }
