@@ -20,17 +20,13 @@ func fprintln(w io.Writer, a ...interface{}) {
 }
 
 func parseIp(str string) net.IP {
-	for _, b := range str {
-		switch b {
-		case '.':
-			if ip := net.ParseIP(str); ip != nil {
-				return ip.To4()
-			}
-		case ':':
-			return net.ParseIP(str)
+	ip := net.ParseIP(str)
+	if ip != nil {
+		if ipv4 := ip.To4(); ipv4 != nil {
+			return ipv4
 		}
 	}
-	return nil
+	return ip
 }
 
 // maybe IpCidr, Range or Ip is returned
