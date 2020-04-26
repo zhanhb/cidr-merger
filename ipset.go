@@ -179,11 +179,7 @@ func minus(a, b net.IP) net.IP {
 	var borrow byte = 0
 	for i := ipLen - 1; i >= 0; i-- {
 		result[i] = a[i] - b[i] - borrow
-		if result[i] > a[i] {
-			borrow = 1
-		} else {
-			borrow = 0
-		}
+		borrow = ((^a[i] & b[i]) | (^(a[i] ^ b[i]) & result[i])) >> 7
 	}
 	if borrow != 0 {
 		panic("assert failed: subtract " + b.String() + " from " + a.String())
