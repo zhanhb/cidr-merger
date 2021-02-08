@@ -35,7 +35,7 @@ func parseIp(str string) net.IP {
 	return ip
 }
 
-// maybe IpCidr, Range or Ip is returned
+// maybe IpWrapper, Range or IpNetWrapper is returned
 func parse(text string) (IRange, error) {
 	if index := strings.IndexByte(text, '/'); index != -1 {
 		if _, network, err := net.ParseCIDR(text); err == nil {
