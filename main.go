@@ -12,6 +12,12 @@ import (
 
 var VERSION = "SNAPSHOT"
 
+func doClose(c io.Closer) {
+	if err := c.Close(); err != nil {
+		panic(err)
+	}
+}
+
 //noinspection SpellCheckingInspection
 func fprintln(w io.Writer, a ...interface{}) {
 	if _, err := fmt.Fprintln(w, a...); err != nil {
@@ -81,8 +87,7 @@ func readFile(inputFile string) []IRange {
 		if err != nil {
 			panic(err)
 		}
-		//noinspection GoUnhandledErrorResult
-		defer in.Close()
+		defer doClose(in)
 		input = bufio.NewScanner(in)
 	}
 	input.Split(bufio.ScanWords)
@@ -168,8 +173,7 @@ func process(option *Option, outputFile string, inputFiles ...string) {
 	} else if file, err := os.Create(outputFile); err != nil {
 		panic(err)
 	} else {
-		//noinspection GoUnhandledErrorResult
-		defer file.Close()
+		defer doClose(file)
 		target = file
 	}
 	writer := bufio.NewWriter(target)
@@ -202,8 +206,7 @@ func mainNormal(option *Option) {
 func main() {
 	defer func() {
 		if err := recover(); err != nil {
-			//noinspection GoUnhandledErrorResult
-			fmt.Fprintln(os.Stderr, err)
+			fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
 	}()
