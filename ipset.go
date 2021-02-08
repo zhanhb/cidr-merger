@@ -31,16 +31,10 @@ func (r *Range) ToIp() net.IP {
 func (r *Range) ToIpNets() []*net.IPNet {
 	s, end := r.start, r.end
 	ipBits := len(s) * 8
-	if allZero(s) && allFF(end) {
-		return []*net.IPNet{
-			{IP: s, Mask: net.CIDRMask(0, ipBits)},
-		}
-	}
 	var result []*net.IPNet
 	for {
 		// assert s <= end;
-		// will never overflow
-		cidr := max(leadingZero(addOne(minus(end, s)))+1, ipBits-trailingZeros(s))
+		cidr := max(prefixLength(xor(addOne(end), s)), ipBits-trailingZeros(s))
 		ipNet := &net.IPNet{IP: s, Mask: net.CIDRMask(cidr, ipBits)}
 		result = append(result, ipNet)
 		tmp := lastIp(ipNet)
@@ -115,22 +109,14 @@ func allFF(ip []byte) bool {
 	return true
 }
 
-func allZero(ip net.IP) bool {
-	for _, c := range ip {
-		if c != 0 {
-			return false
-		}
-	}
-	return true
-}
-
-func leadingZero(ip net.IP) int {
+func prefixLength(ip net.IP) int {
 	for index, c := range ip {
 		if c != 0 {
-			return index*8 + bits.LeadingZeros8(c)
+			return index*8 + bits.LeadingZeros8(c) + 1
 		}
 	}
-	return len(ip) * 8
+	// special case for overflow
+	return 0
 }
 
 func trailingZeros(ip net.IP) int {
@@ -167,22 +153,14 @@ func addOne(ip net.IP) net.IP {
 			add = 0
 		}
 	}
-	if add != 0 {
-		panic("assert failed: unexpected ip " + ip.String())
-	}
 	return to
 }
 
-func minus(a, b net.IP) net.IP {
+func xor(a, b net.IP) net.IP {
 	ipLen := len(a)
 	result := make(net.IP, ipLen)
-	var borrow byte = 0
 	for i := ipLen - 1; i >= 0; i-- {
-		result[i] = a[i] - b[i] - borrow
-		borrow = ((^a[i] & b[i]) | (^(a[i] ^ b[i]) & result[i])) >> 7
-	}
-	if borrow != 0 {
-		panic("assert failed: subtract " + b.String() + " from " + a.String())
+		result[i] = a[i] ^ b[i]
 	}
 	return result
 }
