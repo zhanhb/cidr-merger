@@ -1,6 +1,38 @@
 # cidr-merger
 A simple utility to merge ip/ip cidr/ip range, support IPv4/IPv6
 
+```
+$ cidr-merger --help
+Usage: cidr-merger [OPTION]... [FILE]...
+Write sorted result to standard output.
+
+Options:
+     --batch               batch mode (default), read file content into memory,
+                           then write to the specified file
+     --cidr                print as ip/cidr (default if not console mode)
+ -c, --console             console mode, all input output files are ignored,
+                           write to stdout immediately
+     --empty-policy=value  indicate how to process empty input file
+                             ignore(default): process as if it is not empty
+                             skip: don't create output file
+                             error: raise an error and exit
+ -e, --error-if-empty      same as --empty-policy=error
+ -h, --help                show this help menu
+     --ignore-empty        same as --empty-policy=ignore
+ -k, --skip-empty          same as --empty-policy=skip
+     --merge               sort and merge input values (default)
+     --original-order      output as the order of input, without merging
+ -o, --output=file         output values to <file>, if multiple output files
+                           specified, the count should be same as input files,
+                           and will be processed respectively
+ -r, --range               print as ip ranges
+     --simple              output as single ip as possible (default)
+                             ie. 192.168.1.2/32 -> 192.168.1.2
+                                 192.168.1.2-192.168.1.2 -> 192.168.1.2
+ -s, --standard            don't output as single ip
+ -v, --version             show version info
+```
+
 Sample Usage:
 ```shell script
 $ echo '1.0.0.1-223.255.255.254' | cidr-merger
