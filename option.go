@@ -47,29 +47,29 @@ func printUsage(set *getopt.Set, file io.Writer, extra ...interface{}) {
 
 func parseOptions() *Option {
 	var (
-		dummy      bool
+		sharedBool bool
 		outputFile string
 		outputType = OutputTypeDefault
 	)
 
 	options := getopt.New()
-	batchModeValue := options.FlagLong(&dummy, "batch", 0, "batch mode (default), read file content into memory, then write to the specified file").Value()
+	batchModeValue := options.FlagLong(&sharedBool, "batch", 0, "batch mode (default), read file content into memory, then write to the specified file").Value()
 	consoleMode := options.BoolLong("console", 'c', "console mode, all input output files are ignored, write to stdout immediately")
-	outputAsCidr := options.FlagLong(&dummy, "cidr", 0, "print as ip/cidr (default if not console mode)").Value()
-	outputAsRange := options.FlagLong(&dummy, "range", 'r', "print as ip ranges").Value()
+	outputAsCidr := options.FlagLong(&sharedBool, "cidr", 0, "print as ip/cidr (default if not console mode)").Value()
+	outputAsRange := options.FlagLong(&sharedBool, "range", 'r', "print as ip ranges").Value()
 	emptyPolicy := options.EnumLong("empty-policy", 0,
 		[]string{"ignore", "skip", "error"}, "",
 		"indicate how to process empty input file\n  ignore(default): process as if it is not empty\n  skip: don't create output file\n  error: raise an error and exit")
 	outputFileValue := options.FlagLong(&outputFile, "output", 'o', "output values to <file>, if multiple output files specified, the count should be same as input files, and will be processed respectively", "file").Value()
-	errorEmpty := options.FlagLong(&dummy, "error-if-empty", 'e', "same as --empty-policy=error").Value()
-	skipEmpty := options.FlagLong(&dummy, "skip-empty", 'k', "same as --empty-policy=skip").Value()
-	ignoreEmpty := options.FlagLong(&dummy, "ignore-empty", 0, "same as --empty-policy=ignore").Value()
-	simple := options.FlagLong(&dummy, "simple", 0, "output as single ip as possible (default)\n  ie. 192.168.1.2/32 -> 192.168.1.2\n      192.168.1.2-192.168.1.2 -> 192.168.1.2").Value()
+	errorEmpty := options.FlagLong(&sharedBool, "error-if-empty", 'e', "same as --empty-policy=error").Value()
+	skipEmpty := options.FlagLong(&sharedBool, "skip-empty", 'k', "same as --empty-policy=skip").Value()
+	ignoreEmpty := options.FlagLong(&sharedBool, "ignore-empty", 0, "same as --empty-policy=ignore").Value()
+	simple := options.FlagLong(&sharedBool, "simple", 0, "output as single ip as possible (default)\n  ie. 192.168.1.2/32 -> 192.168.1.2\n      192.168.1.2-192.168.1.2 -> 192.168.1.2").Value()
 	standard := options.BoolLong("standard", 's', "don't output as single ip")
-	merge := options.FlagLong(&dummy, "merge", 0, "sort and merge input values (default)").Value()
+	merge := options.FlagLong(&sharedBool, "merge", 0, "sort and merge input values (default)").Value()
 	originalOrder := options.BoolLong("original-order", 0, "output as the order of input, without merging")
-	help := options.FlagLong(&dummy, "help", 'h', "show this help menu").Value()
-	version := options.FlagLong(&dummy, "version", 'v', "show version info").Value()
+	help := options.FlagLong(&sharedBool, "help", 'h', "show this help menu").Value()
+	version := options.FlagLong(&sharedBool, "version", 'v', "show version info").Value()
 
 	reverse := map[getopt.Value]*bool{
 		batchModeValue: consoleMode,
@@ -105,10 +105,10 @@ func parseOptions() *Option {
 	if err := options.Getopt(os.Args, func(opt getopt.Option) bool {
 		value := opt.Value()
 		if k := reverse[value]; k != nil {
-			*k = !dummy
+			*k = !sharedBool
 			return true
 		} else if k := policyDelegate[value]; k != "" {
-			if dummy {
+			if sharedBool {
 				*emptyPolicy = k
 			} else {
 				*emptyPolicy = ""
