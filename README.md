@@ -7,10 +7,12 @@ Usage: cidr-merger [OPTION]... [FILE]...
 Write sorted result to standard output.
 
 Options:
-     --batch               batch mode (default), read file content into memory,
-                           then write to the specified file
+     --batch               batch mode (default if input files supplied or stdin
+                           is not a tty), read file content into memory, then
+                           write to the specified file
      --cidr                print as ip/cidr (default if not console mode)
- -c, --console             console mode, all input output files are ignored,
+ -c, --console             console mode(default if no input files supplied and
+                           stdin is a tty), all input output files are ignored,
                            write to stdout immediately
      --empty-policy=value  indicate how to process empty input file
                              ignore(default): process as if it is not empty
