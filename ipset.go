@@ -5,7 +5,17 @@ import (
 	"math/bits"
 	"net"
 	"sort"
+	"strconv"
 )
+
+func ipToString(ip net.IP) string {
+	if len(ip) == net.IPv6len {
+		if ipv4 := ip.To4(); len(ipv4) == net.IPv4len {
+			return "::ffff:" + ipv4.String()
+		}
+	}
+	return ip.String()
+}
 
 type IRange interface {
 	ToIp() net.IP // return nil if can't be represented as a single ip
@@ -48,7 +58,7 @@ func (r *Range) ToRange() *Range {
 	return r
 }
 func (r *Range) String() string {
-	return r.start.String() + "-" + r.end.String()
+	return ipToString(r.start) + "-" + ipToString(r.end)
 }
 
 type IpWrapper struct {
@@ -67,6 +77,9 @@ func (r IpWrapper) ToIpNets() []*net.IPNet {
 func (r IpWrapper) ToRange() *Range {
 	return &Range{start: r.IP, end: r.IP}
 }
+func (r IpWrapper) String() string {
+	return ipToString(r.IP)
+}
 
 type IpNetWrapper struct {
 	*net.IPNet
@@ -84,6 +97,13 @@ func (r IpNetWrapper) ToIpNets() []*net.IPNet {
 func (r IpNetWrapper) ToRange() *Range {
 	ipNet := r.IPNet
 	return &Range{start: ipNet.IP, end: lastIp(ipNet)}
+}
+func (r IpNetWrapper) String() string {
+	ip, mask := r.IP, r.Mask
+	if ones, _ := mask.Size(); ones != 0 {
+		return ipToString(ip) + "/" + strconv.Itoa(ones)
+	}
+	return ipToString(ip) + "/" + mask.String()
 }
 
 func lessThan(a, b net.IP) bool {

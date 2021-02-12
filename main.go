@@ -26,13 +26,15 @@ func fprintln(w io.Writer, a ...interface{}) {
 }
 
 func parseIp(str string) net.IP {
-	ip := net.ParseIP(str)
-	if ip != nil {
-		if ipv4 := ip.To4(); ipv4 != nil {
-			return ipv4
+	for _, b := range str {
+		switch b {
+		case '.':
+			return net.ParseIP(str).To4()
+		case ':':
+			return net.ParseIP(str).To16()
 		}
 	}
-	return ip
+	return nil
 }
 
 // maybe IpWrapper, Range or IpNetWrapper is returned
@@ -122,7 +124,7 @@ func mainConsole(option *Option) {
 		printer = func(writer io.Writer, r IRange) {
 			switch r.(type) {
 			case IpWrapper:
-				fprintln(writer, r.ToIpNets()[0].String())
+				fprintln(writer, IpNetWrapper{r.ToIpNets()[0]})
 			case IpNetWrapper:
 				fprintln(writer, simpler(r.ToRange()))
 			case *Range:
