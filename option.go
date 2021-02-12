@@ -130,18 +130,12 @@ func parseOptions() *Option {
 		os.Exit(0)
 	}
 
-	var inputFiles []string
-	if args := options.Args(); len(args) == 0 {
-		inputFiles = []string{"-"}
-	} else {
-		inputFiles = args
-	}
 	simpler := singleOrSelf
 	if *standard {
 		simpler = returnSelf
 	}
 	return &Option{
-		inputFiles:    inputFiles,
+		inputFiles:    options.Args(),
 		outputFiles:   outputFiles,
 		outputType:    outputType,
 		consoleMode:   *consoleMode,

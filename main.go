@@ -48,9 +48,7 @@ func parse(text string) (IRange, error) {
 		return IpWrapper{ip}, nil
 	}
 	if index := strings.IndexByte(text, '-'); index != -1 {
-		start := parseIp(text[:index])
-		end := parseIp(text[index+1:])
-		if start != nil && end != nil {
+		if start, end := parseIp(text[:index]), parseIp(text[index+1:]); start != nil && end != nil {
 			if len(start) == len(end) && !lessThan(end, start) {
 				return &Range{start: start, end: end}, nil
 			}
@@ -64,8 +62,7 @@ func read(input *bufio.Scanner) []IRange {
 	var arr []IRange
 	for input.Scan() {
 		if text := input.Text(); text != "" {
-			maybe, err := parse(text)
-			if err != nil {
+			if maybe, err := parse(text); err != nil {
 				fprintln(os.Stderr, err)
 			} else {
 				arr = append(arr, maybe)
@@ -193,7 +190,11 @@ func mainNormal(option *Option) {
 		} else {
 			outputFile = "-"
 		}
-		process(option, outputFile, option.inputFiles...)
+		if len(option.inputFiles) == 0 {
+			process(option, outputFile, "-")
+		} else {
+			process(option, outputFile, option.inputFiles...)
+		}
 	} else if len(option.inputFiles) == outputSize {
 		for i := 0; i < outputSize; i++ {
 			process(option, option.outputFiles[i], option.inputFiles[i])

@@ -132,10 +132,10 @@ func trailingZeros(ip net.IP) int {
 func lastIp(ipNet *net.IPNet) net.IP {
 	ip, mask := ipNet.IP, ipNet.Mask
 	ipLen := len(ip)
-	res := make(net.IP, ipLen)
 	if len(mask) != ipLen {
 		panic("assert failed: unexpected IPNet " + ipNet.String())
 	}
+	res := make(net.IP, ipLen)
 	for i := 0; i < ipLen; i++ {
 		res[i] = ip[i] | ^mask[i]
 	}
@@ -144,25 +144,25 @@ func lastIp(ipNet *net.IPNet) net.IP {
 
 func addOne(ip net.IP) net.IP {
 	ipLen := len(ip)
-	to := make(net.IP, ipLen)
-	var add byte = 1
+	res := make(net.IP, ipLen)
 	for i := ipLen - 1; i >= 0; i-- {
-		res := ip[i] + add
-		to[i] = res
-		if res != 0 {
-			add = 0
+		t := ip[i] + 1
+		res[i] = t
+		if t != 0 {
+			copy(res, ip[0:i])
+			break
 		}
 	}
-	return to
+	return res
 }
 
 func xor(a, b net.IP) net.IP {
 	ipLen := len(a)
-	result := make(net.IP, ipLen)
+	res := make(net.IP, ipLen)
 	for i := ipLen - 1; i >= 0; i-- {
-		result[i] = a[i] ^ b[i]
+		res[i] = a[i] ^ b[i]
 	}
-	return result
+	return res
 }
 
 func convertBatch(wrappers []IRange, outputType OutputType) []IRange {
@@ -205,7 +205,7 @@ func sortAndMerge(wrappers []IRange) []IRange {
 	now := ranges[0]
 	familyLength := now.familyLength()
 	start, end := now.start, now.end
-	for i := 1; i < len(ranges); i++ {
+	for i, count := 1, len(ranges); i < count; i++ {
 		now := ranges[i]
 		if fl := now.familyLength(); fl != familyLength {
 			res = append(res, &Range{start, end})
