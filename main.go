@@ -3,11 +3,12 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"github.com/pborman/getopt/v2"
 	"io"
 	"net"
 	"os"
 	"strings"
+
+	"github.com/pborman/getopt/v2"
 )
 
 var VERSION = "SNAPSHOT"
@@ -18,7 +19,7 @@ func doClose(c io.Closer) {
 	}
 }
 
-//noinspection SpellCheckingInspection
+// noinspection SpellCheckingInspection
 func fprintln(w io.Writer, a ...interface{}) {
 	if _, err := fmt.Fprintln(w, a...); err != nil {
 		panic(err)

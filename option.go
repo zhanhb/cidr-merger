@@ -1,14 +1,16 @@
 package main
 
 import (
-	"github.com/mattn/go-isatty"
-	"github.com/pborman/getopt/v2"
 	"io"
 	"os"
 	"strings"
+
+	"github.com/mattn/go-isatty"
+	"github.com/pborman/getopt/v2"
 )
 
 type OutputType byte
+
 type ConsoleMode byte
 
 type Option struct {
