@@ -1,6 +1,6 @@
-VERSION=$(shell git describe --exact-match --tags 2>/dev/null | sed 's/^v//')
+VERSION:=$(shell git describe --exact-match --tags 2>/dev/null | sed 's/^v//')
 ifeq ($(VERSION),)
-    VERSION=$(shell git rev-list -1 HEAD)
+    VERSION:=$(shell git rev-list -1 HEAD)
 endif
 
 export CGO_ENABLED=0
@@ -29,6 +29,7 @@ $(eval $(call compile,linux,amd64))
 $(eval $(call compile,linux,arm,arm5,GOARM=5))
 $(eval $(call compile,linux,arm,arm6,GOARM=6))
 $(eval $(call compile,linux,arm,arm7,GOARM=7))
+$(eval $(call compile,linux,arm,arm8))
 $(eval $(call compile,linux,arm64))
 $(eval $(call compile,linux,mips,mips-hard,GOMIPS=hardfloat))
 $(eval $(call compile,linux,mips,mips-soft,GOMIPS=softfloat))
