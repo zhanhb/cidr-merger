@@ -165,9 +165,8 @@ func addOne(ip net.IP) net.IP {
 	ipLen := len(ip)
 	res := make(net.IP, ipLen)
 	for i := ipLen - 1; i >= 0; i-- {
-		t := ip[i] + 1
-		res[i] = t
-		if t != 0 {
+		if t := ip[i]; t != 0xFF {
+			res[i] = t + 1
 			copy(res, ip[0:i])
 			break
 		}
