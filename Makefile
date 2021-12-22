@@ -7,15 +7,17 @@ export CGO_ENABLED=0
 LDFLAGS=-X main.VERSION=$(VERSION) -s -w
 GCFLAGS=
 
+SOURCES:=$(filter-out %_test.go,$(wildcard *.go))
+
 BINARIES=
 define compile
-dist/cidr-merger-$(1)-$(or $(3),$(2))$(if $(filter windows,$(1)),.exe):
+dist/cidr-merger-$(1)-$(or $(3),$(2))$(if $(filter windows,$(1)),.exe): $$(SOURCES)
 	mkdir -p $$(@D)
 	GOOS=$(1) GOARCH=$(2) $(4) go build -ldflags "$$(LDFLAGS)" -gcflags "$$(GCFLAGS)" -o $$@
 BINARIES+=dist/cidr-merger-$(1)-$(or $(3),$(2))$(if $(filter windows,$(1)),.exe)
 endef
 
-dist/cidr-merger:
+dist/cidr-merger: $(SOURCES)
 	mkdir -p $(@D)
 	go build -ldflags "$(LDFLAGS)" -gcflags "$(GCFLAGS)" -o $@
 
@@ -48,6 +50,26 @@ $(eval $(call compile,windows,amd64))
 
 all: $(BINARIES)
 .PHONY: all
+
+define TEST_SCRIPT
+set -e
+test_dir=target/test
+mkdir -p "$$test_dir"
+for i in tests/*.in; do
+    name="$${i##*/}"
+    echo "running $$name"
+    base="$$test_dir/$${name%.in}"
+    "$$BIN" --range "$$i" >"$$base.range"
+    "$$BIN" --cidr "$$i" >"$$base.cidr"
+    "$$BIN" --range "$$base.cidr" >"$$base.cidr.range"
+    diff -u "$$base.range" "$$base.cidr.range"
+done
+endef
+
+test: export TEST_SCRIPT:=$(TEST_SCRIPT)
+test: dist/cidr-merger
+	BIN='$<' eval "$$TEST_SCRIPT"
+.PHONY: test
 
 clean:
 	rm -rf dist

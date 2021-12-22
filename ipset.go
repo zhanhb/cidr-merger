@@ -18,7 +18,7 @@ func ipToString(ip net.IP) string {
 }
 
 type IRange interface {
-	ToIp() net.IP // return nil if can't be represented as a single ip
+	ToIp() net.IP // return nil if it can't be represented as a single ip
 	ToIpNets() []*net.IPNet
 	ToRange() *Range
 	String() string
