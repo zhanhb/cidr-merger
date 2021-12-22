@@ -101,7 +101,7 @@ func (r IpNetWrapper) ToRange() *Range {
 }
 func (r IpNetWrapper) String() string {
 	ip, mask := r.IP, r.Mask
-	if ones, _ := mask.Size(); ones != 0 {
+	if ones, bitCount := mask.Size(); bitCount != 0 {
 		return ipToString(ip) + "/" + strconv.Itoa(ones)
 	}
 	return ipToString(ip) + "/" + mask.String()
