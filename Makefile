@@ -7,7 +7,9 @@ export CGO_ENABLED=0
 LDFLAGS=-X main.VERSION=$(VERSION) -s -w
 GCFLAGS=
 
-SOURCES:=$(filter-out %_test.go,$(wildcard *.go))
+ALL_SOURCES:=$(wildcard *.go)
+SOURCES:=$(filter-out %_test.go,$(ALL_SOURCES))
+TEST_SOURCES:=$(wildcard *_test.go)
 
 BINARIES=
 define compile
@@ -67,7 +69,8 @@ done
 endef
 
 test: export TEST_SCRIPT:=$(TEST_SCRIPT)
-test: dist/cidr-merger
+test: dist/cidr-merger $(TEST_SOURCES)
+	go test
 	BIN='$<' eval "$$TEST_SCRIPT"
 .PHONY: test
 

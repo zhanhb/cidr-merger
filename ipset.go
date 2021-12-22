@@ -41,9 +41,10 @@ func (r *Range) ToIp() net.IP {
 func (r *Range) ToIpNets() []*net.IPNet {
 	s, end := r.start, r.end
 	ipBits := len(s) * 8
+	assert(ipBits == len(end)*8, "len(r.start) == len(r.end)")
 	var result []*net.IPNet
 	for {
-		// assert s <= end;
+		assert(bytes.Compare(s, end) <= 0, "s <= end")
 		cidr := max(prefixLength(xor(addOne(end), s)), ipBits-trailingZeros(s))
 		ipNet := &net.IPNet{IP: s, Mask: net.CIDRMask(cidr, ipBits)}
 		result = append(result, ipNet)
@@ -152,9 +153,7 @@ func trailingZeros(ip net.IP) int {
 func lastIp(ipNet *net.IPNet) net.IP {
 	ip, mask := ipNet.IP, ipNet.Mask
 	ipLen := len(ip)
-	if len(mask) != ipLen {
-		panic("assert failed: unexpected IPNet " + ipNet.String())
-	}
+	assert(len(mask) == ipLen, "unexpected IPNet %v", ipNet)
 	res := make(net.IP, ipLen)
 	for i := 0; i < ipLen; i++ {
 		res[i] = ip[i] | ^mask[i]
@@ -178,6 +177,7 @@ func addOne(ip net.IP) net.IP {
 
 func xor(a, b net.IP) net.IP {
 	ipLen := len(a)
+	assert(ipLen == len(b), "a=%v, b=%v", a, b)
 	res := make(net.IP, ipLen)
 	for i := ipLen - 1; i >= 0; i-- {
 		res[i] = a[i] ^ b[i]
@@ -214,7 +214,9 @@ func (s Ranges) Less(i, j int) bool {
 }
 
 func sortAndMerge(wrappers []IRange) []IRange {
-	// assume len(wrappers) > 1
+	if len(wrappers) < 2 {
+		return wrappers
+	}
 	ranges := make([]*Range, 0, len(wrappers))
 	for _, e := range wrappers {
 		ranges = append(ranges, e.ToRange())

@@ -130,7 +130,7 @@ func mainConsole(option *Option) {
 			case *Range:
 				printAsIpNets(writer, r, simpler)
 			default:
-				panic("unreachable")
+				assert(false, "unreachable")
 			}
 		}
 	}
@@ -160,9 +160,7 @@ func process(option *Option, outputFile string, inputFiles ...string) {
 			// empty string if not specified, or "ignore"
 		}
 	}
-	if option.originalOrder || len(result) < 2 {
-		// noop
-	} else {
+	if !option.originalOrder {
 		result = sortAndMerge(result)
 	}
 	result = convertBatch(result, option.outputType)
