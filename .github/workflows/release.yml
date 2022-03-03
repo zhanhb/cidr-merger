@@ -1,0 +1,36 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: git tag
+        required: true
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v2
+        with:
+            go-version: 1.17
+      - env:
+          GITHUB_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          git tag "$INPUT_TAG"
+          make all
+          cd dist
+          {
+            go version | sed 's/^go[[:space:]]*version[[:space:]]*/Build with /'
+            echo '```'
+            sha256sum cidr-merger-*
+            echo '```'
+          } >notes
+          gh release -R "$GITHUB_REPOSITORY" create "$INPUT_TAG" \
+            --notes-file notes \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            cidr-merger-* 
